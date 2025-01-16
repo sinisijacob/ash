@@ -22,7 +22,7 @@ Then you can start defining policies for your resource.
 
 Each policy defined in a resource has two parts -
 
-- a condition, such as `action_type(:read)` or `actor_attribute_equals(:admin, true)` or `always()`. If this condition is true for a given action request, then the policy will be applied to the request.
+- a condition or a list of conditions, such as `action_type(:read)`, `[action_type(:read), actor_attribute_equals(:admin, true)]` or `always()`. If the condition, or all conditions if given a list are true for a given action request, then the policy will be applied to the request.
 - a set of policy checks, each of which will be evaluated individually if a policy applies to a request.
 
 If more than one policy applies to any given request (eg. an admin actor calls a read action) then **all applicable policies must pass** for the action to be performed.
@@ -53,6 +53,21 @@ There are four check types, all of which do what they sound like they do:
 - `forbid_unless` - if the check is false, the whole policy is forbidden.
 
 If a single check does not explicitly authorize or forbid the whole policy, then the flow moves to the next check. For example, if an `authorize_if` check does NOT return true, this _does not mean the whole policy is forbidden_ - it means that further checking is required.
+
+### Policy with `condition` inside `do` block
+
+A condition or a list of conditions can also be moved inside the `policy` block.
+
+This can make a really long list of conditions easier to read.
+
+```elixir
+policies do
+  policy do
+    condition always()
+    authorize_if always()
+  end
+end
+```
 
 ### How a Decision is Reached
 
@@ -189,7 +204,7 @@ For example, given this policy:
 
 ```elixir
 policy action(:read_hidden) do
-  authorize_if expr(actor.is_admin == true)
+  authorize_if actor_attribute_equals(:is_admin, true)
 end
 ```
 
@@ -201,11 +216,80 @@ However, with this policy
 policy action(:read_hidden) do
   access_type :strict
 
-  authorize_if expr(actor.is_admin == true)
+  authorize_if actor_attribute_equals(:is_admin, true)
 end
 ```
 
 A non-admin using the `:read_hidden` action would see a forbidden error.
+
+### Relationships and Policies 
+
+A common point of confusion when working with relationships is when they return less results or no results due to policies.
+Additionally, when requesting related data that produces a forbidden error, it forbids the *entire request*.
+
+For example, if you have a `Post`, that `belongs_to` `:author`, and the user requesting data cannot see the `author` due to a **filter** policy,
+then you may see something like this:
+
+```elixir
+%MyApp.Post{author: nil, ...}
+```
+
+Even though it is not possible for a `Post` to exist without an associated `:author`!
+
+Additionally, if the user cannot read the `author` due to a `:strict` policy, if you attempt to load the `:author`, the result
+of the **entire operation** will be `{:error, %Ash.Error.Forbidden{}}`.
+
+There are two ways that you can improve this behavior
+
+#### The `allow_forbidden_field?` Option
+
+This option will **default to `true`** in 4.0. You can adopt this behavior now with the following configuration.
+
+```elixir
+config :ash, :allow_forbidden_field_for_relationships_by_default, true
+```
+
+This option adjusts the relationship reading logic such that, if running a related read action would produce a
+forbidden error, the relationship will be set to `%Ash.ForbiddenField{}`, instead of forbidding the entire request.
+
+So in the example above where the **entire operation** fails, you would instead get:
+
+```elixir
+{:ok, %MyApp.Post{author: %Ash.ForbiddenField{}}}
+```
+
+#### The `authorize_read_with` Option
+
+This option typically only makes sense to apply on `has_one` and `belongs_to` relationships. This alters the behavior
+of policy filtering when loading related records. In our above example, lets say there is a policy like the following
+on `MyApp.Author`, that prevents us from reading an author that has been deactivated.
+
+```elixir
+policy action_type(:read) do
+  access_type :filter # This is the default access type. It is here for example.
+  authorize_if expr(active == false)
+end
+```
+
+When running a normal read action against that resource, you want any deactivated authors to be filtered out.
+However, when reading the `:author` relationship, you don't want the author to appear as `nil`. This is especially
+useful when combined with `allow_forbidden_field? true`.
+
+So lets make our `belongs_to` relationship looks like this.
+
+```elixir
+belongs_to :author, MyApp.Author do
+  allow_nil? false
+  allow_forbidden_field? true
+  athorize_read_with :error
+end
+```
+
+Now, that filter will be applied in such a way that produces an error if any record exists that matches `not(active == false)`.
+
+So a forbidden read of the `:author` relationship will never produce a `nil` value, nor will it produce an `{:error, %Ash.Error.Forbidden{}}`
+result. Instead, it the value of `:author` will be `%Ash.ForbiddenField{}`!
+
 
 ## Checks
 
@@ -306,8 +390,7 @@ defmodule MyApp.Checks.ActorOverAgeLimit do
   # A description is not necessary, as it will be derived from the filter, but one could be added
   # def describe(_opts), do: "actor is over the age limit"
 
-  # Filter checks don't have a `context` available to them
-  def filter(_options) do
+  def filter(_options, _authorizer, _opts) do
     expr(age_limit <= ^actor(:age))
   end
 end
@@ -344,7 +427,26 @@ policy action_type(:read) do
 end
 ```
 
-Keep in mind that, for create actions, many `expr/1` checks won't make sense, and may return `false` when you wouldn't expect. Expression (and other filter) policies apply to "a synthesized result" of applying the action, so related values won't be available. For this reason, you may end up wanting to use other checks that are built for working against changesets, or only simple attribute-based filter checks. Custom checks may also be warranted here.
+##### Inline checks for create actions
+
+When using expressions inside of policies that apply to create actions, you may not reference the data being created. For example:
+
+```elixir
+policy action_type(:create) do
+  # This check is fine, as we only reference the actor
+  authorize_if expr(^actor(:admin) == true)
+  # This check is not, because it contains a reference to a field
+  authorize_if expr(status == :active)
+end
+```
+
+> ### Why can't we reference data in creates? {: .info}
+>
+> We cannot allow references to the data being created in create policies, because we do not yet know what the result of the action will be.
+> For updates and destroys, referencing the data always references the data _prior_ to the action being run, and so it is deterministic.
+
+If a policy that applies to creates, would result in a filter, you will get a `Ash.Error.Forbidden.CannotFilterCreates` at runtime explaining
+that you must change your check. Typically this means writing a custom `Ash.Policy.SimpleCheck` instead.
 
 Ash also comes with a set of built-in helpers for writing inline checks - see `Ash.Policy.Check.Builtins` for more information.
 
@@ -436,10 +538,10 @@ In results, forbidden fields will be replaced with a special value: `%Ash.Forbid
 
 When these fields are referred to in filters, they will be replaced with an expression that evaluates to `nil`. To support this behavior, only simple and filter checks are allowed in field policies.
 
-### Handeling private fields in internal functions
+### Handling private fields in internal functions
 
 When calling internal functions like `Ash.read!/1`, private fields will by default always be shown.
-Even if field policies applies to the resource. You can change the default behaviour by setting the
+Even if field policies apply to the resource. You can change the default behaviour by setting the
 `private_fields` option on field policies.
 
 ```elixir

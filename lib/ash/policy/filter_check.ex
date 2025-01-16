@@ -52,6 +52,8 @@ defmodule Ash.Policy.FilterCheck do
 
       def requires_original_data?(_, _), do: false
 
+      def eager_evaluate?, do: false
+
       def strict_check_context(opts) do
         []
       end
@@ -215,6 +217,15 @@ defmodule Ash.Policy.FilterCheck do
              changeset: %Ash.Changeset{data: data, tenant: tenant} = changeset,
              actor: actor
            }) do
+        expression =
+          Ash.Expr.fill_template(
+            expression,
+            actor,
+            changeset.arguments,
+            changeset.context,
+            changeset
+          )
+
         case Ash.Filter.hydrate_refs(expression, %{
                resource: resource,
                aggregates: %{},
@@ -272,12 +283,6 @@ defmodule Ash.Policy.FilterCheck do
         end
       end
 
-      defp no_related_references?(expression) do
-        expression
-        |> Ash.Filter.list_refs()
-        |> Enum.any?(&(&1.relationship_path != []))
-      end
-
       def auto_filter(actor, authorizer, opts) do
         opts = Keyword.put_new(opts, :resource, authorizer.resource)
 
@@ -329,7 +334,8 @@ defmodule Ash.Policy.FilterCheck do
         authorizer.resource
         |> Ash.Query.filter(^filter)
         |> Ash.Query.filter(^auto_filter(actor, authorizer, opts))
-        |> Ash.read(domain: authorizer.domain)
+        |> Ash.Query.set_context(%{private: %{internal?: true}})
+        |> Ash.Actions.Read.unpaginated_read(nil, authorize?: false, domain: authorizer.domain)
         |> case do
           {:ok, authorized_data} ->
             authorized_pkeys = Enum.map(authorized_data, &Map.take(&1, pkey))
@@ -349,6 +355,8 @@ defmodule Ash.Policy.FilterCheck do
             %Ash.Changeset{} = changeset -> changeset
             _ -> nil
           end
+
+        opts = Keyword.update(opts, :resource, authorizer.resource, &(&1 || authorizer.resource))
 
         {:ok,
          actor

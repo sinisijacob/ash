@@ -10,12 +10,12 @@ defimpl Reactor.Dsl.Build, for: Ash.Reactor.Dsl.Action do
   @doc false
   @impl true
   def build(action, reactor) do
-    with {:ok, reactor} <- ensure_hooked(reactor),
-         {:ok, reactor, arguments} <- build_input_arguments(reactor, action) do
+    with {:ok, reactor, arguments} <- build_input_arguments(reactor, action) do
       arguments =
         arguments
         |> maybe_append(action.actor)
         |> maybe_append(action.tenant)
+        |> maybe_append(action.context)
         |> Enum.concat(action.wait_for)
 
       action_options =

@@ -49,6 +49,13 @@ defmodule Ash.Actions.Create do
                                   metadata do
           case do_run(domain, changeset, action, opts) do
             {:error, error} ->
+              error =
+                Ash.Error.to_error_class(
+                  error,
+                  bread_crumbs:
+                    "Error returned from: #{inspect(changeset.resource)}.#{action.name}"
+                )
+
               if opts[:tracer] do
                 stacktrace =
                   case error do
@@ -77,7 +84,13 @@ defmodule Ash.Actions.Create do
     end
   rescue
     e ->
-      reraise Ash.Error.to_error_class(e, changeset: changeset, stacktrace: __STACKTRACE__),
+      reraise Ash.Error.to_error_class(e,
+                changeset: changeset,
+                stacktrace: __STACKTRACE__,
+                bread_crumbs: [
+                  "Exception raised in: #{inspect(changeset.resource)}.#{action.name}"
+                ]
+              ),
               __STACKTRACE__
   end
 
@@ -96,6 +109,13 @@ defmodule Ash.Actions.Create do
           get_in(changeset.context, [:private, :upsert_identity])
       else
         opts[:upsert_identity] || get_in(changeset.context, [:private, :upsert_identity])
+      end
+
+    opts =
+      if get_in(changeset.context, [:private, :return_skipped_upsert?]) do
+        Keyword.put(opts, :return_skipped_upsert?, true)
+      else
+        opts
       end
 
     opts =
@@ -363,6 +383,32 @@ defmodule Ash.Actions.Create do
                                 opts[:upsert_identity] || changeset.action.upsert_identity
                               )
                           )
+                          |> case do
+                            {:ok, {:upsert_skipped, _query, callback}} ->
+                              if opts[:return_skipped_upsert?] do
+                                callback.()
+                              else
+                                {:error,
+                                 Ash.Error.Changes.StaleRecord.exception(
+                                   resource: changeset.resource,
+                                   filter: changeset.filter
+                                 )}
+                              end
+
+                            {:ok, %{__metadata__: %{upsert_skipped: true}}} = result ->
+                              if opts[:return_skipped_upsert?] do
+                                result
+                              else
+                                {:error,
+                                 Ash.Error.Changes.StaleRecord.exception(
+                                   resource: changeset.resource,
+                                   filter: changeset.filter
+                                 )}
+                              end
+
+                            other ->
+                              other
+                          end
                           |> Helpers.rollback_if_in_transaction(
                             changeset.resource,
                             changeset
@@ -396,6 +442,12 @@ defmodule Ash.Actions.Create do
                       end
                       |> case do
                         {:ok, result, instructions} ->
+                          result =
+                            Helpers.select(result, %{
+                              resource: changeset.resource,
+                              select: changeset.action_select
+                            })
+
                           {:ok, result,
                            instructions
                            |> Map.update!(
@@ -432,8 +484,13 @@ defmodule Ash.Actions.Create do
     case result do
       {:ok, created, changeset, instructions} ->
         {:ok, created, instructions}
-        |> Helpers.load(changeset, domain,
+        |> Helpers.load(
+          Ash.Changeset.set_context(changeset, %{
+            private: %{just_created_by_action: changeset.action.name}
+          }),
+          domain,
           actor: opts[:actor],
+          action: Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
           reuse_values?: true,
           authorize?: opts[:authorize?],
           tracer: opts[:tracer]

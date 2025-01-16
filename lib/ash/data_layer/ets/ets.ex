@@ -404,8 +404,10 @@ defmodule Ash.DataLayer.Ets do
          records <- Sort.runtime_sort(records, sort, domain: domain),
          records <- Enum.drop(records, offset || []),
          records <- do_limit(records, limit),
-         {:ok, records} <- do_add_aggregates(records, domain, resource, aggregates),
-         {:ok, records} <- do_add_calculations(records, resource, calculations, domain) do
+         {:ok, records} <-
+           do_add_aggregates(records, domain, resource, aggregates),
+         {:ok, records} <-
+           do_add_calculations(records, resource, calculations, domain) do
       {:ok, records}
     else
       {:error, error} ->
@@ -812,7 +814,7 @@ defmodule Ash.DataLayer.Ets do
         if include_nil? do
           case records do
             [] ->
-              default
+              nil
 
             [record | _rest] ->
               field_value(record, field)
@@ -937,6 +939,10 @@ defmodule Ash.DataLayer.Ets do
                 end
             end
         end
+    end
+    |> case do
+      nil -> default
+      other -> other
     end
   end
 
@@ -1265,7 +1271,7 @@ defmodule Ash.DataLayer.Ets do
       end)
 
     with {:ok, table} <- wrap_or_create_table(resource, changeset.tenant),
-         _ <- unless(from_bulk_create?, do: log_create(resource, changeset)),
+         _ <- if(!from_bulk_create?, do: log_create(resource, changeset)),
          {:ok, record} <- Ash.Changeset.apply_attributes(changeset),
          record <- unload_relationships(resource, record),
          {:ok, record} <- put_or_insert_new(table, {pkey, record}, resource) do
@@ -1521,7 +1527,7 @@ defmodule Ash.DataLayer.Ets do
     pkey = pkey || pkey_map(resource, changeset.data)
 
     with {:ok, table} <- wrap_or_create_table(resource, changeset.tenant),
-         _ <- unless(from_bulk?, do: log_update(resource, pkey, changeset)),
+         _ <- if(!from_bulk?, do: log_update(resource, pkey, changeset)),
          {:ok, record} <-
            do_update(
              table,

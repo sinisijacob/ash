@@ -457,6 +457,8 @@ end
 | [`sort`](#relationships-has_one-sort){: #relationships-has_one-sort } | `any` |  | A sort statement to be applied when loading the relationship. |
 | [`could_be_related_at_creation?`](#relationships-has_one-could_be_related_at_creation?){: #relationships-has_one-could_be_related_at_creation? } | `boolean` | `false` | Whether or not related values may exist for this relationship at creation. |
 | [`violation_message`](#relationships-has_one-violation_message){: #relationships-has_one-violation_message } | `String.t` |  | A message to show if there is a conflict with this relationship in the database on destroy. |
+| [`authorize_read_with`](#relationships-has_one-authorize_read_with){: #relationships-has_one-authorize_read_with } | `:error \| :filter` |  | If set to `:error`, any authorization filter added to the relationship will result in an error if any record matches the filter in the database. |
+| [`allow_forbidden_field?`](#relationships-has_one-allow_forbidden_field?){: #relationships-has_one-allow_forbidden_field? } | `boolean` | `false` | If set to `true`, the relationship will be set to `%Ash.ForbiddenField{}` if its query produces a forbidden error. |
 
 
 ## relationships.has_one.filter
@@ -465,7 +467,7 @@ filter filter
 ```
 
 
-Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.
+Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.
 
 
 
@@ -482,7 +484,7 @@ filter expr(last_name == "weasley" and magician == true)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`filter`](#relationships-has_one-filter-filter){: #relationships-has_one-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*. |
+| [`filter`](#relationships-has_one-filter-filter){: #relationships-has_one-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*. |
 
 
 
@@ -554,6 +556,8 @@ end
 | [`sort`](#relationships-has_many-sort){: #relationships-has_many-sort } | `any` |  | A sort statement to be applied when loading the relationship. |
 | [`could_be_related_at_creation?`](#relationships-has_many-could_be_related_at_creation?){: #relationships-has_many-could_be_related_at_creation? } | `boolean` | `false` | Whether or not related values may exist for this relationship at creation. |
 | [`violation_message`](#relationships-has_many-violation_message){: #relationships-has_many-violation_message } | `String.t` |  | A message to show if there is a conflict with this relationship in the database on destroy. |
+| [`authorize_read_with`](#relationships-has_many-authorize_read_with){: #relationships-has_many-authorize_read_with } | `:error \| :filter` |  | If set to `:error`, any authorization filter added to the relationship will result in an error if any record matches the filter in the database. |
+| [`allow_forbidden_field?`](#relationships-has_many-allow_forbidden_field?){: #relationships-has_many-allow_forbidden_field? } | `boolean` | `false` | If set to `true`, the relationship will be set to `%Ash.ForbiddenField{}` if its query produces a forbidden error. |
 
 
 ## relationships.has_many.filter
@@ -562,7 +566,7 @@ filter filter
 ```
 
 
-Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.
+Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.
 
 
 
@@ -579,7 +583,7 @@ filter expr(last_name == "weasley" and magician == true)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`filter`](#relationships-has_many-filter-filter){: #relationships-has_many-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*. |
+| [`filter`](#relationships-has_many-filter-filter){: #relationships-has_many-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*. |
 
 
 
@@ -662,6 +666,8 @@ belongs_to :word, Word, primary_key?: true, allow_nil?: false
 | [`sort`](#relationships-many_to_many-sort){: #relationships-many_to_many-sort } | `any` |  | A sort statement to be applied when loading the relationship. |
 | [`could_be_related_at_creation?`](#relationships-many_to_many-could_be_related_at_creation?){: #relationships-many_to_many-could_be_related_at_creation? } | `boolean` | `false` | Whether or not related values may exist for this relationship at creation. |
 | [`violation_message`](#relationships-many_to_many-violation_message){: #relationships-many_to_many-violation_message } | `String.t` |  | A message to show if there is a conflict with this relationship in the database on destroy. |
+| [`authorize_read_with`](#relationships-many_to_many-authorize_read_with){: #relationships-many_to_many-authorize_read_with } | `:error \| :filter` |  | If set to `:error`, any authorization filter added to the relationship will result in an error if any record matches the filter in the database. |
+| [`allow_forbidden_field?`](#relationships-many_to_many-allow_forbidden_field?){: #relationships-many_to_many-allow_forbidden_field? } | `boolean` | `false` | If set to `true`, the relationship will be set to `%Ash.ForbiddenField{}` if its query produces a forbidden error. |
 
 
 ## relationships.many_to_many.filter
@@ -670,7 +676,7 @@ filter filter
 ```
 
 
-Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.
+Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.
 
 
 
@@ -687,7 +693,7 @@ filter expr(last_name == "weasley" and magician == true)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`filter`](#relationships-many_to_many-filter-filter){: #relationships-many_to_many-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*. |
+| [`filter`](#relationships-many_to_many-filter-filter){: #relationships-many_to_many-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*. |
 
 
 
@@ -764,6 +770,8 @@ end
 | [`sortable?`](#relationships-belongs_to-sortable?){: #relationships-belongs_to-sortable? } | `boolean` | `true` | If set to `false`, the relationship will not be usable in filters. |
 | [`sort`](#relationships-belongs_to-sort){: #relationships-belongs_to-sort } | `any` |  | A sort statement to be applied when loading the relationship. |
 | [`violation_message`](#relationships-belongs_to-violation_message){: #relationships-belongs_to-violation_message } | `String.t` |  | A message to show if there is a conflict with this relationship in the database on destroy. |
+| [`authorize_read_with`](#relationships-belongs_to-authorize_read_with){: #relationships-belongs_to-authorize_read_with } | `:error \| :filter` |  | If set to `:error`, any authorization filter added to the relationship will result in an error if any record matches the filter in the database. |
+| [`allow_forbidden_field?`](#relationships-belongs_to-allow_forbidden_field?){: #relationships-belongs_to-allow_forbidden_field? } | `boolean` | `false` | If set to `true`, the relationship will be set to `%Ash.ForbiddenField{}` if its query produces a forbidden error. |
 
 
 ## relationships.belongs_to.filter
@@ -772,7 +780,7 @@ filter filter
 ```
 
 
-Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.
+Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.
 
 
 
@@ -789,7 +797,7 @@ filter expr(last_name == "weasley" and magician == true)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`filter`](#relationships-belongs_to-filter-filter){: #relationships-belongs_to-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*. |
+| [`filter`](#relationships-belongs_to-filter-filter){: #relationships-belongs_to-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*. |
 
 
 
@@ -937,7 +945,6 @@ end
 | [`description`](#actions-action-description){: #actions-action-description } | `String.t` |  | An optional description for the action |
 | [`transaction?`](#actions-action-transaction?){: #actions-action-transaction? } | `boolean` |  | Whether or not the action should be run in transactions. Reads default to false, while create/update/destroy actions default to `true`. |
 | [`touches_resources`](#actions-action-touches_resources){: #actions-action-touches_resources } | `list(atom)` |  | A list of resources that the action may touch, used when building transactions. |
-| [`action_select`](#actions-action-action_select){: #actions-action-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes, it defaults to the externally selected attributes. |
 | [`skip_unknown_inputs`](#actions-action-skip_unknown_inputs){: #actions-action-skip_unknown_inputs } | `atom \| String.t \| list(atom \| String.t)` | `[]` | A list of unknown fields to skip, or `:*` to skip all unknown fields. |
 
 
@@ -1031,13 +1038,14 @@ end
 | [`upsert_identity`](#actions-create-upsert_identity){: #actions-create-upsert_identity } | `atom` |  | The identity to use for the upsert. Cannot be overriden by the caller. Ignored  if `upsert?` is not set to `true`. |
 | [`upsert_fields`](#actions-create-upsert_fields){: #actions-create-upsert_fields } | `:replace_all \| {:replace, atom \| list(atom)} \| {:replace_all_except, atom \| list(atom)} \| atom \| list(atom)` |  | The fields to overwrite in the case of an upsert. If not provided, all fields except for fields set by defaults will be overwritten. |
 | [`upsert_condition`](#actions-create-upsert_condition){: #actions-create-upsert_condition } | `any` |  | An expression to check if the record should be updated when there's a conflict. |
+| [`return_skipped_upsert?`](#actions-create-return_skipped_upsert?){: #actions-create-return_skipped_upsert? } | `boolean` |  | Returns the record that would have been upserted against but was skipped due to a filter or no fields being changed. How this works depends on the data layer. Keep in mind that read policies *are not applied* to the read of the record in question. |
 | [`primary?`](#actions-create-primary?){: #actions-create-primary? } | `boolean` | `false` | Whether or not this action should be used when no action is specified by the caller. |
 | [`description`](#actions-create-description){: #actions-create-description } | `String.t` |  | An optional description for the action |
 | [`transaction?`](#actions-create-transaction?){: #actions-create-transaction? } | `boolean` |  | Whether or not the action should be run in transactions. Reads default to false, while create/update/destroy actions default to `true`. |
 | [`touches_resources`](#actions-create-touches_resources){: #actions-create-touches_resources } | `list(atom)` |  | A list of resources that the action may touch, used when building transactions. |
-| [`action_select`](#actions-create-action_select){: #actions-create-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes, it defaults to the externally selected attributes. |
 | [`skip_unknown_inputs`](#actions-create-skip_unknown_inputs){: #actions-create-skip_unknown_inputs } | `atom \| String.t \| list(atom \| String.t)` | `[]` | A list of unknown fields to skip, or `:*` to skip all unknown fields. |
 | [`accept`](#actions-create-accept){: #actions-create-accept } | `atom \| list(atom) \| :*` |  | The list of attributes to accept. Use `:*` to accept all public attributes. |
+| [`action_select`](#actions-create-action_select){: #actions-create-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes/notifiers, it defaults to the externally selected attributes. Keep in mind that action_select is applied *before* notifiers. |
 | [`require_attributes`](#actions-create-require_attributes){: #actions-create-require_attributes } | `list(atom)` |  | A list of attributes that would normally `allow_nil?`, to require for this action. No need to include attributes that already do not allow nil? |
 | [`allow_nil_input`](#actions-create-allow_nil_input){: #actions-create-allow_nil_input } | `list(atom)` |  | A list of attributes that would normally be required, but should not be for this action. They will still be validated just before the data layer step. |
 | [`delay_global_validations?`](#actions-create-delay_global_validations?){: #actions-create-delay_global_validations? } | `boolean` | `false` | If true, global validations will be done in a `before_action` hook, regardless of their configuration on the resource. |
@@ -1101,7 +1109,7 @@ validate validation
 
 Declares a validation to be applied to the changeset.
 
-See `Ash.Resource.Validation` for more.
+See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
 
 
 
@@ -1281,7 +1289,6 @@ end
 | [`description`](#actions-read-description){: #actions-read-description } | `String.t` |  | An optional description for the action |
 | [`transaction?`](#actions-read-transaction?){: #actions-read-transaction? } | `boolean` |  | Whether or not the action should be run in transactions. Reads default to false, while create/update/destroy actions default to `true`. |
 | [`touches_resources`](#actions-read-touches_resources){: #actions-read-touches_resources } | `list(atom)` |  | A list of resources that the action may touch, used when building transactions. |
-| [`action_select`](#actions-read-action_select){: #actions-read-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes, it defaults to the externally selected attributes. |
 | [`skip_unknown_inputs`](#actions-read-skip_unknown_inputs){: #actions-read-skip_unknown_inputs } | `atom \| String.t \| list(atom \| String.t)` | `[]` | A list of unknown fields to skip, or `:*` to skip all unknown fields. |
 
 
@@ -1446,7 +1453,7 @@ filter filter
 ```
 
 
-Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.
+Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.
 
 
 
@@ -1463,7 +1470,7 @@ filter expr(last_name == "weasley" and magician == true)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
-| [`filter`](#actions-read-filter-filter){: #actions-read-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*. |
+| [`filter`](#actions-read-filter-filter){: #actions-read-filter-filter .spark-required} | `any` |  | The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*. |
 
 
 
@@ -1521,9 +1528,9 @@ update :flag_for_review, primary?: true
 | [`description`](#actions-update-description){: #actions-update-description } | `String.t` |  | An optional description for the action |
 | [`transaction?`](#actions-update-transaction?){: #actions-update-transaction? } | `boolean` |  | Whether or not the action should be run in transactions. Reads default to false, while create/update/destroy actions default to `true`. |
 | [`touches_resources`](#actions-update-touches_resources){: #actions-update-touches_resources } | `list(atom)` |  | A list of resources that the action may touch, used when building transactions. |
-| [`action_select`](#actions-update-action_select){: #actions-update-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes, it defaults to the externally selected attributes. |
 | [`skip_unknown_inputs`](#actions-update-skip_unknown_inputs){: #actions-update-skip_unknown_inputs } | `atom \| String.t \| list(atom \| String.t)` | `[]` | A list of unknown fields to skip, or `:*` to skip all unknown fields. |
 | [`accept`](#actions-update-accept){: #actions-update-accept } | `atom \| list(atom) \| :*` |  | The list of attributes to accept. Use `:*` to accept all public attributes. |
+| [`action_select`](#actions-update-action_select){: #actions-update-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes/notifiers, it defaults to the externally selected attributes. Keep in mind that action_select is applied *before* notifiers. |
 | [`require_attributes`](#actions-update-require_attributes){: #actions-update-require_attributes } | `list(atom)` |  | A list of attributes that would normally `allow_nil?`, to require for this action. No need to include attributes that already do not allow nil? |
 | [`allow_nil_input`](#actions-update-allow_nil_input){: #actions-update-allow_nil_input } | `list(atom)` |  | A list of attributes that would normally be required, but should not be for this action. They will still be validated just before the data layer step. |
 | [`delay_global_validations?`](#actions-update-delay_global_validations?){: #actions-update-delay_global_validations? } | `boolean` | `false` | If true, global validations will be done in a `before_action` hook, regardless of their configuration on the resource. |
@@ -1587,7 +1594,7 @@ validate validation
 
 Declares a validation to be applied to the changeset.
 
-See `Ash.Resource.Validation` for more.
+See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
 
 
 
@@ -1765,9 +1772,9 @@ end
 | [`description`](#actions-destroy-description){: #actions-destroy-description } | `String.t` |  | An optional description for the action |
 | [`transaction?`](#actions-destroy-transaction?){: #actions-destroy-transaction? } | `boolean` |  | Whether or not the action should be run in transactions. Reads default to false, while create/update/destroy actions default to `true`. |
 | [`touches_resources`](#actions-destroy-touches_resources){: #actions-destroy-touches_resources } | `list(atom)` |  | A list of resources that the action may touch, used when building transactions. |
-| [`action_select`](#actions-destroy-action_select){: #actions-destroy-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes, it defaults to the externally selected attributes. |
 | [`skip_unknown_inputs`](#actions-destroy-skip_unknown_inputs){: #actions-destroy-skip_unknown_inputs } | `atom \| String.t \| list(atom \| String.t)` | `[]` | A list of unknown fields to skip, or `:*` to skip all unknown fields. |
 | [`accept`](#actions-destroy-accept){: #actions-destroy-accept } | `atom \| list(atom) \| :*` |  | The list of attributes to accept. Use `:*` to accept all public attributes. |
+| [`action_select`](#actions-destroy-action_select){: #actions-destroy-action_select } | `list(atom)` |  | A list of attributes that the action requires to do its work. Defaults to all attributes except those with `select_by_default? false`. On actions with no changes/notifiers, it defaults to the externally selected attributes. Keep in mind that action_select is applied *before* notifiers. |
 | [`require_attributes`](#actions-destroy-require_attributes){: #actions-destroy-require_attributes } | `list(atom)` |  | A list of attributes that would normally `allow_nil?`, to require for this action. No need to include attributes that already do not allow nil? |
 | [`allow_nil_input`](#actions-destroy-allow_nil_input){: #actions-destroy-allow_nil_input } | `list(atom)` |  | A list of attributes that would normally be required, but should not be for this action. They will still be validated just before the data layer step. |
 | [`delay_global_validations?`](#actions-destroy-delay_global_validations?){: #actions-destroy-delay_global_validations? } | `boolean` | `false` | If true, global validations will be done in a `before_action` hook, regardless of their configuration on the resource. |
@@ -1831,7 +1838,7 @@ validate validation
 
 Declares a validation to be applied to the changeset.
 
-See `Ash.Resource.Validation` for more.
+See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
 
 
 
@@ -2032,6 +2039,7 @@ define :get_user_by_id, action: :get_by_id, args: [:id], get?: true
 | [`get?`](#code_interface-define-get?){: #code_interface-define-get? } | `boolean` | `false` | Expects to only receive a single result from a read action or a bulk update/destroy, and returns a single result instead of a list. Sets `require_reference?` to false automatically. |
 | [`get_by`](#code_interface-define-get_by){: #code_interface-define-get_by } | `atom \| list(atom)` |  | Takes a list of fields and adds those fields as arguments, which will then be used to filter. Sets `get?` to true and `require_reference?` to false automatically. Adds filters for read, update and destroy actions, replacing the `record` first argument. |
 | [`get_by_identity`](#code_interface-define-get_by_identity){: #code_interface-define-get_by_identity } | `atom` |  | Takes an identity, gets its field list, and performs the same logic as `get_by` with those fields. Adds filters for read, update and destroy actions, replacing the `record` first argument. |
+| [`default_options`](#code_interface-define-default_options){: #code_interface-define-default_options } | `keyword` | `[]` | Default options to be merged with client-provided options. These can override domain or action defaults. `:load`, `:bulk_options`, and `:page` options will be deep merged. |
 
 
 
@@ -2353,7 +2361,7 @@ validate validation
 
 Declares a validation for creates and updates.
 
-See `Ash.Resource.Change` for more.
+See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
 
 
 
@@ -3309,10 +3317,10 @@ Declares a named calculation on the resource.
 Takes a module that must adopt the `Ash.Resource.Calculation` behaviour. See that module
 for more information.
 
-To ensure that the necessary fields are selected:
+To ensure that the necessary fields are loaded:
 
-1.) Specifying the `select` option on a calculation in the resource.
-2.) Define a `select/2` callback in the calculation module
+1.) Specifying the `load` option on a calculation in the resource.
+2.) Define a `load/3` callback in the calculation module
 3.) Set `always_select?` on the attribute in question
 
 See the [calculations guide](/documentation/topics/resources/calculations.md) for more.
@@ -3325,12 +3333,26 @@ See the [calculations guide](/documentation/topics/resources/calculations.md) fo
 ### Examples
 `Ash.Resource.Calculation` implementation example:
 ```
-calculate :full_name, :string, {MyApp.FullName, keys: [:first_name, :last_name]}, select: [:first_name, :last_name]
+calculate :full_name, :string, {MyApp.FullName, keys: [:first_name, :last_name]}, load: [:first_name, :last_name]
 ```
 
 `expr/1` example:
 ```
 calculate :full_name, :string, expr(first_name <> " " <> last_name)
+```
+
+Example with options:
+```
+calculate :full_name, :string, expr(first_name <> " " <> last_name), allow_nil?: false
+```
+
+Example with options in `do` block:
+```
+calculate :full_name, :string, expr(first_name <> " " <> last_name) do
+  allow_nil? false
+  public? true
+end
+
 ```
 
 

@@ -81,9 +81,11 @@ defmodule Ash.Actions.Aggregate do
                      resource: query.resource,
                      limit: query.limit,
                      offset: query.offset,
+                     distinct: query.distinct,
                      domain: query.domain,
                      tenant: query.tenant,
-                     to_tenant: query.to_tenant
+                     to_tenant: query.to_tenant,
+                     context: query.context
                    }),
                  {:ok, result} <-
                    Ash.DataLayer.run_aggregate_query(
@@ -147,7 +149,7 @@ defmodule Ash.Actions.Aggregate do
                query.resource,
                name,
                kind,
-               set_opts(query, [], opts)
+               Keyword.put(set_opts(query, [], opts), :agg_name, name)
              ) do
           {:ok, aggregate} ->
             {:cont, {:ok, [aggregate | aggregates]}}
@@ -157,7 +159,12 @@ defmodule Ash.Actions.Aggregate do
         end
 
       {name, kind, agg_opts}, {:ok, aggregates} ->
-        case Ash.Query.Aggregate.new(query.resource, name, kind, set_opts(query, agg_opts, opts)) do
+        case Ash.Query.Aggregate.new(
+               query.resource,
+               name,
+               kind,
+               Keyword.put(set_opts(query, agg_opts, opts), :agg_name, name)
+             ) do
           {:ok, aggregate} ->
             {:cont, {:ok, [aggregate | aggregates]}}
 
@@ -199,7 +206,7 @@ defmodule Ash.Actions.Aggregate do
           query
 
         opts ->
-          Ash.Query.Aggregate.build_query(query, opts)
+          Ash.Query.Aggregate.build_query(query, nil, opts)
       end
 
     Keyword.put(agg_opts, :query, query)

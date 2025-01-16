@@ -9,7 +9,7 @@ defmodule Ash.Resource.Dsl do
     args: [:filter],
     target: Filter,
     describe:
-      "Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.",
+      "Applies a filter. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.",
     examples: [
       """
       filter expr(first_name == "fred")
@@ -23,7 +23,7 @@ defmodule Ash.Resource.Dsl do
       filter: [
         type: :any,
         doc:
-          "The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` teplates. Multiple filters are combined with *and*.",
+          "The filter to apply. Can use `^arg/1`, `^context/1` and `^actor/1` templates. Multiple filters are combined with *and*.",
         required: true
       ]
     ]
@@ -473,7 +473,7 @@ defmodule Ash.Resource.Dsl do
     describe: """
     Declares a validation for creates and updates.
 
-    See `Ash.Resource.Change` for more.
+    See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
     """,
     examples: [
       "validate {Mod, [foo: :bar]}",
@@ -491,7 +491,7 @@ defmodule Ash.Resource.Dsl do
     describe: """
     Declares a validation to be applied to the changeset.
 
-    See `Ash.Resource.Validation` for more.
+    See `Ash.Resource.Validation.Builtins` or `Ash.Resource.Validation` for more.
     """,
     examples: [
       "validate changing(:email)"
@@ -1350,10 +1350,10 @@ defmodule Ash.Resource.Dsl do
     Takes a module that must adopt the `Ash.Resource.Calculation` behaviour. See that module
     for more information.
 
-    To ensure that the necessary fields are selected:
+    To ensure that the necessary fields are loaded:
 
-    1.) Specifying the `select` option on a calculation in the resource.
-    2.) Define a `select/2` callback in the calculation module
+    1.) Specifying the `load` option on a calculation in the resource.
+    2.) Define a `load/3` callback in the calculation module
     3.) Set `always_select?` on the attribute in question
 
     See the [calculations guide](/documentation/topics/resources/calculations.md) for more.
@@ -1361,11 +1361,24 @@ defmodule Ash.Resource.Dsl do
     examples: [
       {
         "`Ash.Resource.Calculation` implementation example:",
-        "calculate :full_name, :string, {MyApp.FullName, keys: [:first_name, :last_name]}, select: [:first_name, :last_name]"
+        "calculate :full_name, :string, {MyApp.FullName, keys: [:first_name, :last_name]}, load: [:first_name, :last_name]"
       },
       {
         "`expr/1` example:",
         "calculate :full_name, :string, expr(first_name <> \" \" <> last_name)"
+      },
+      {
+        "Example with options:",
+        "calculate :full_name, :string, expr(first_name <> \" \" <> last_name), allow_nil?: false"
+      },
+      {
+        "Example with options in `do` block:",
+        """
+        calculate :full_name, :string, expr(first_name <> \" \" <> last_name) do
+          allow_nil? false
+          public? true
+        end
+        """
       }
     ],
     target: Ash.Resource.Calculation,
@@ -1511,7 +1524,8 @@ defmodule Ash.Resource.Dsl do
     Ash.Resource.Verifiers.VerifyActionsAtomic,
     Ash.Resource.Verifiers.VerifyNotifiers,
     Ash.Resource.Verifiers.VerifyPrimaryKeyPresent,
-    Ash.Resource.Verifiers.VerifyGenericActionReactorInputs
+    Ash.Resource.Verifiers.VerifyGenericActionReactorInputs,
+    Ash.Resource.Verifiers.ValidateArgumentsToCodeInterface
   ]
 
   @moduledoc false

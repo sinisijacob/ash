@@ -29,7 +29,7 @@ defmodule Ash.Query.Aggregate do
   @kinds [:count, :first, :sum, :list, :max, :min, :avg, :exists, :custom]
   @type kind :: unquote(Enum.reduce(@kinds, &{:|, [], [&1, &2]}))
 
-  alias Ash.Error.Query.{NoReadAction, NoSuchRelationship}
+  alias Ash.Error.Query.{AggregatesNotSupported, NoReadAction, NoSuchRelationship}
 
   require Ash.Query
 
@@ -59,6 +59,11 @@ defmodule Ash.Query.Aggregate do
       doc:
         "The relationship path to aggregate over. Only used when adding aggregates to a query.",
       default: []
+    ],
+    agg_name: [
+      type: :any,
+      hide: true,
+      doc: "A resource calculation this calculation maps to."
     ],
     query: [
       type: :any,
@@ -138,6 +143,11 @@ defmodule Ash.Query.Aggregate do
       doc: "Whether or not references to this aggregate will be considered sensitive",
       default: false
     ],
+    tenant: [
+      type: :any,
+      doc: "The tenant to use for the aggregate, if applicable.",
+      default: nil
+    ],
     authorize?: [
       type: :boolean,
       default: true,
@@ -180,13 +190,15 @@ defmodule Ash.Query.Aggregate do
           false
       end)
 
-    with {:ok, %Opts{} = opts} <- Opts.validate(opts) do
+    with {:ok, %Opts{} = opts} <- Opts.validate(opts),
+         agg_name = agg_name(opts),
+         :ok <- validate_supported(resource, kind, agg_name) do
       related = Ash.Resource.Info.related(resource, opts.path)
 
       query =
         case opts.query || Ash.Query.new(related) do
           %Ash.Query{} = query -> query
-          build_opts -> build_query(related, build_opts)
+          build_opts -> build_query(related, resource, build_opts)
         end
 
       Enum.reduce_while(opts.join_filters, {:ok, %{}}, fn {path, filter}, {:ok, acc} ->
@@ -210,7 +222,18 @@ defmodule Ash.Query.Aggregate do
           constraints = opts.constraints
           implementation = opts.implementation
           uniq? = opts.uniq?
-          read_action = opts.read_action
+
+          read_action =
+            if :read_action in opts.__set__ do
+              opts.read_action
+            else
+              relationship = Ash.Resource.Info.relationship(resource, relationship)
+
+              if relationship do
+                relationship.read_action
+              end
+            end
+
           authorize? = opts.authorize?
           include_nil? = opts.include_nil?
 
@@ -298,18 +321,10 @@ defmodule Ash.Query.Aggregate do
 
               field when is_atom(field) ->
                 case Ash.Resource.Info.field(related, field) do
-                  %Ash.Resource.Calculation{calculation: {module, calc_opts}} = calc ->
-                    {:ok, calc} =
-                      Ash.Query.Calculation.new(
-                        field,
-                        module,
-                        calc_opts,
-                        calc.type,
-                        calc.constraints,
-                        arguments: opts.arguments || %{},
-                        sensitive?: opts.sensitive?,
-                        sortable?: opts.sortable?,
-                        filterable?: opts.filterable?
+                  %Ash.Resource.Calculation{} = calc ->
+                    calc =
+                      Ash.Query.Calculation.from_resource_calculation!(related, calc,
+                        args: opts.arguments || %{}
                       )
 
                     %{calc | load: field}
@@ -330,11 +345,18 @@ defmodule Ash.Query.Aggregate do
                :ok <- validate_path(resource, List.wrap(relationship)),
                {:ok, type, constraints} <-
                  get_type(kind, type, attribute_type, attribute_constraints, constraints),
-               %{valid?: true} = query <- build_query(related, query) do
+               %{valid?: true} = query <- build_query(related, resource, query) do
+            query =
+              if opts.tenant do
+                Ash.Query.set_tenant(query, opts.tenant)
+              else
+                query
+              end
+
             {:ok,
              %__MODULE__{
                name: name,
-               agg_name: name,
+               agg_name: agg_name,
                resource: resource,
                constraints: constraints,
                default_value: default || default_value(kind),
@@ -365,6 +387,25 @@ defmodule Ash.Query.Aggregate do
           {:error, error}
       end
     end
+  end
+
+  defp agg_name(opts) do
+    if :agg_name in opts.__set__ do
+      opts.agg_name
+    end
+  end
+
+  defp validate_supported(resource, kind, nil) do
+    if Ash.DataLayer.data_layer_can?(resource, {:aggregate, kind}) do
+      :ok
+    else
+      {:error, AggregatesNotSupported.exception(resource: resource, feature: "using")}
+    end
+  end
+
+  # resource aggregates can only exist if supported, so we don't need to check
+  defp validate_supported(_resource, _kind, _agg_name) do
+    :ok
   end
 
   defp parse_join_filter(resource, path, filter) do
@@ -457,6 +498,9 @@ defmodule Ash.Query.Aggregate do
     {left, right} = Keyword.split(opts, opt_keys())
 
     right =
+      Keyword.put(right, :tenant, left[:tenant])
+
+    right =
       case Keyword.fetch(left, :authorize?) do
         {:ok, value} ->
           Keyword.put(right, :authorize?, value)
@@ -485,9 +529,9 @@ defmodule Ash.Query.Aggregate do
   def default_value(:custom), do: nil
 
   @doc false
-  def build_query(resource, nil), do: Ash.Query.new(resource)
+  def build_query(resource, _parent, nil), do: Ash.Query.new(resource)
 
-  def build_query(resource, build_opts) when is_list(build_opts) do
+  def build_query(resource, parent, build_opts) when is_list(build_opts) do
     cond do
       build_opts[:limit] ->
         Ash.Query.add_error(resource, "Cannot set limit on aggregate query")
@@ -496,9 +540,13 @@ defmodule Ash.Query.Aggregate do
         Ash.Query.add_error(resource, "Cannot set offset on aggregate query")
 
       true ->
+        {filter, build_opts} = Keyword.pop(build_opts, :filter)
+
         case Ash.Query.build(resource, build_opts) do
           %{valid?: true} = query ->
-            build_query(resource, query)
+            resource
+            |> build_query(parent, query)
+            |> Ash.Query.do_filter(filter, parent_stack: [parent])
 
           %{valid?: false} = query ->
             query
@@ -506,7 +554,7 @@ defmodule Ash.Query.Aggregate do
     end
   end
 
-  def build_query(_resource, %Ash.Query{} = query) do
+  def build_query(_resource, _parent, %Ash.Query{} = query) do
     cond do
       query.limit ->
         Ash.Query.add_error(query, "Cannot set limit on aggregate query")

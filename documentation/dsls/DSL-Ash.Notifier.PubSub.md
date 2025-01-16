@@ -10,6 +10,25 @@ This is plug and play with `Phoenix.PubSub`, but could be used with any pubsub s
 You configure a module that defines a `broadcast/3` function, and then add some "publications"
 which configure under what conditions an event should be sent and what the topic should be.
 
+## Example
+
+```elixir
+defmodule MyApp.User do
+  use Ash.Resource,
+    # ...
+    notifiers: [Ash.Notifier.PubSub]
+
+  # ...
+
+  pub_sub do
+    module MyAppWeb.Endpoint
+
+    prefix "user"
+    publish :update, ["updated", :_pkey]
+  end
+end
+```
+
 ## Debugging PubSub
 
 It can be quite frustrating when setting up pub_sub when everything appears to be set up properly, but
@@ -212,6 +231,7 @@ publish_all :create, "created"
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
+| [`except`](#pub_sub-publish_all-except){: #pub_sub-publish_all-except } | `list(atom)` | `[]` | Exclude these actions from notifications |
 | [`action`](#pub_sub-publish_all-action){: #pub_sub-publish_all-action } | `atom` |  | The name of the action that should be published |
 | [`previous_values?`](#pub_sub-publish_all-previous_values?){: #pub_sub-publish_all-previous_values? } | `boolean` | `false` | Whether or not to publish messages with both the new values and the old values for referencing changed attributes |
 | [`event`](#pub_sub-publish_all-event){: #pub_sub-publish_all-event } | `String.t` |  | The name of the event to publish. Defaults to the action name |

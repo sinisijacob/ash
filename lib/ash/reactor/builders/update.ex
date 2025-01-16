@@ -10,13 +10,13 @@ defimpl Reactor.Dsl.Build, for: Ash.Reactor.Dsl.Update do
   @doc false
   @impl true
   def build(update, reactor) do
-    with {:ok, reactor} <- ensure_hooked(reactor),
-         {:ok, reactor, arguments} <- build_input_arguments(reactor, update) do
+    with {:ok, reactor, arguments} <- build_input_arguments(reactor, update) do
       arguments =
         arguments
         |> maybe_append(update.actor)
         |> maybe_append(update.tenant)
         |> maybe_append(update.load)
+        |> maybe_append(update.context)
         |> Enum.concat(update.wait_for)
         |> Enum.concat([%Argument{name: :initial, source: update.initial}])
 

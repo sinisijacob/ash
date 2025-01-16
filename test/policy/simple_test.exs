@@ -148,6 +148,14 @@ defmodule Ash.Test.Policy.SimpleTest do
       policy action(:update) do
         authorize_if OldEnoughToDrink
         authorize_if expr(id == ^actor(:id))
+        authorize_if relates_to_actor_via(:self)
+      end
+    end
+
+    relationships do
+      belongs_to :self, __MODULE__ do
+        source_attribute :id
+        destination_attribute :id
       end
     end
   end
@@ -258,6 +266,9 @@ defmodule Ash.Test.Policy.SimpleTest do
 
   test "Ash.can? accepts a record to determine if it can be read", %{admin: admin, user: user} do
     tweet = Ash.create!(Ash.Changeset.for_create(Tweet, :create), authorize?: false)
+
+    assert Ash.can?({Ash.Query.new(Tweet), :read}, admin)
+    assert Ash.can?({Ash.Query.new(Tweet), :read, %{}}, user)
 
     assert Ash.can?({tweet, :read}, admin)
     refute Ash.can?({tweet, :read}, user)

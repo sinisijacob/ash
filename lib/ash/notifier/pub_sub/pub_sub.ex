@@ -89,6 +89,25 @@ defmodule Ash.Notifier.PubSub do
   You configure a module that defines a `broadcast/3` function, and then add some "publications"
   which configure under what conditions an event should be sent and what the topic should be.
 
+  ## Example
+
+  ```elixir
+  defmodule MyApp.User do
+    use Ash.Resource,
+      # ...
+      notifiers: [Ash.Notifier.PubSub]
+
+    # ...
+
+    pub_sub do
+      module MyAppWeb.Endpoint
+
+      prefix "user"
+      publish :update, ["updated", :_pkey]
+    end
+  end
+  ```
+
   ## Debugging PubSub
 
   It can be quite frustrating when setting up pub_sub when everything appears to be set up properly, but
@@ -333,9 +352,9 @@ defmodule Ash.Notifier.PubSub do
          previous_values?,
          trail
        ) do
-    if notification.changeset.tenant do
+    if notification.changeset.to_tenant do
       all_combinations_of_values(rest, notification, action_type, previous_values?, [
-        notification.changeset.tenant | trail
+        notification.changeset.to_tenant | trail
       ])
     else
       []
@@ -462,7 +481,10 @@ defmodule Ash.Notifier.PubSub do
   defp publishable_value?(_, _), do: true
 
   defp matches?(%{action: action}, %{name: action}), do: true
-  defp matches?(%{type: type}, %{type: type}), do: true
+
+  defp matches?(%{type: type, except: except}, %{type: type, name: action}) do
+    action not in except
+  end
 
   defp matches?(_, _), do: false
 end

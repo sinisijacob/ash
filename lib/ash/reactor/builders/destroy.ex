@@ -10,13 +10,13 @@ defimpl Reactor.Dsl.Build, for: Ash.Reactor.Dsl.Destroy do
   @doc false
   @impl true
   def build(destroy, reactor) do
-    with {:ok, reactor} <- ensure_hooked(reactor),
-         {:ok, reactor, arguments} <- build_input_arguments(reactor, destroy) do
+    with {:ok, reactor, arguments} <- build_input_arguments(reactor, destroy) do
       arguments =
         arguments
         |> maybe_append(destroy.actor)
         |> maybe_append(destroy.tenant)
         |> maybe_append(destroy.load)
+        |> maybe_append(destroy.context)
         |> Enum.concat(destroy.wait_for)
         |> Enum.concat([%Argument{name: :initial, source: destroy.initial}])
 

@@ -11,6 +11,39 @@ defmodule Ash.Error do
     ],
     unknown_error: Ash.Error.Unknown.UnknownError
 
+  @type error_keyword_option ::
+          {:field, atom()}
+          | {:fields, list(atom)}
+          | {:value, term()}
+          | {:message, String.t()}
+          | {:path, list(atom | String.t())}
+
+  @type error_keyword :: list(error_keyword_option)
+
+  @type ash_error :: Exception.t()
+  @type ash_error_subject :: Ash.Changeset.t() | Ash.Query.t() | Ash.ActionInput.t()
+  @type path :: [String.t() | atom() | integer()]
+  @type path_input :: [String.t() | atom() | integer()] | String.t() | atom() | integer()
+
+  @type error_input ::
+          ash_error() | error_keyword() | String.t() | ash_error_subject() | Exception.t() | any()
+
+  @doc """
+  Converts a value to an Ash exception.
+
+  The supported inputs to this function can be provided to various places,
+  like `Ash.Query.add_error/2`, `Ash.Changeset.add_error/2` and `Ash.ActionInput.add_error/2`.
+
+  Additionally, any place that you can *return* an error you can return instead a valid
+  error input.
+
+  See [the error handling guide](/documentation/development/error-handling.md) for more.
+  """
+  @spec to_ash_error(
+          error_input() | list(error_input),
+          Exception.stacktrace() | nil,
+          Keyword.t()
+        ) :: ash_error() | [ash_error()]
   def to_ash_error(value, stacktrace \\ nil, opts \\ []) do
     value =
       value
@@ -27,6 +60,15 @@ defmodule Ash.Error do
     to_error(value, Keyword.put(opts, :stacktrace, stacktrace))
   end
 
+  @doc """
+  Converts a value to an Ash.Error type.
+  """
+
+  @spec to_error_class(
+          ash_error_subject() | term() | [ash_error_subject()] | [term()],
+          Keyword.t()
+        ) ::
+          t()
   def to_error_class(value, opts \\ [])
 
   def to_error_class(%Ash.Changeset{errors: errors} = changeset, opts) do
@@ -86,6 +128,10 @@ defmodule Ash.Error do
     end
   end
 
+  @doc """
+  Converts errors into a single `String.t`.
+  """
+  @spec error_descriptions(term() | [term()]) :: String.t()
   def error_descriptions(errors) do
     errors
     |> to_error_class()
@@ -106,11 +152,25 @@ defmodule Ash.Error do
   defp header(:framework), do: "Framework Error"
   defp header(:unknown), do: "Unknown Error"
 
+  @doc """
+  Returns whether or not a term is an Ash.Error type.
+  """
+  @spec ash_error?(term()) :: boolean()
   def ash_error?(value), do: splode_error?(value, __MODULE__)
 
+  @doc """
+  This function prepends the provided path to any existing path on the errors.
+  """
+  @spec set_path(ash_error() | list(ash_error()), path_input()) :: ash_error() | list(ash_error())
+
+  @spec set_path(ash_error_subject(), path_input()) :: ash_error_subject()
   def set_path(%struct{errors: errors} = container, path)
       when struct in [Ash.Changeset, Ash.ActionInput, Ash.Query] do
     %{container | errors: set_path(errors, path)}
+  end
+
+  def set_path(errors, path) when is_list(errors) do
+    Enum.map(errors, &set_path(&1, path))
   end
 
   def set_path(error, path) do

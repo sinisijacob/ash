@@ -19,6 +19,7 @@ defmodule Ash.Reactor.ActionStep do
       |> maybe_set_kw(:authorize?, options[:authorize?])
       |> maybe_set_kw(:actor, arguments[:actor])
       |> maybe_set_kw(:tenant, arguments[:tenant])
+      |> Keyword.take(Ash.ActionInput.Opts.schema() |> Keyword.keys())
 
     action_options =
       [domain: options[:domain]]
@@ -26,6 +27,7 @@ defmodule Ash.Reactor.ActionStep do
 
     options[:resource]
     |> ActionInput.for_action(options[:action], arguments[:input], action_input_options)
+    |> ActionInput.set_context(arguments[:context] || %{})
     |> Ash.run_action(action_options)
   end
 
@@ -41,6 +43,8 @@ defmodule Ash.Reactor.ActionStep do
       |> maybe_set_kw(:authorize?, options[:authorize?])
       |> maybe_set_kw(:actor, arguments[:actor])
       |> maybe_set_kw(:tenant, arguments[:tenant])
+      |> Keyword.take(Ash.ActionInput.Opts.schema() |> Keyword.keys())
+      |> Keyword.drop([:resource])
 
     action_options =
       []
@@ -53,6 +57,7 @@ defmodule Ash.Reactor.ActionStep do
 
     options[:resource]
     |> ActionInput.for_action(options[:action], inputs, action_input_options)
+    |> ActionInput.set_context(arguments[:context] || %{})
     |> Ash.run_action(action_options)
   end
 

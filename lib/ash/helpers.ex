@@ -308,7 +308,7 @@ defmodule Ash.Helpers do
         {:ok, result, query}
 
       {:error, error} ->
-        {:error, Ash.Error.to_ash_error(error, query: query)}
+        {:error, Ash.Error.to_ash_error(error, nil, query: query)}
     end
   end
 
@@ -442,8 +442,23 @@ defmodule Ash.Helpers do
     domain
   end
 
+  def get_domain(%input_struct{resource: resource}, opts)
+      when input_struct in [Ash.Query, Ash.Changeset, Ash.ActionInput] do
+    get_domain(resource, opts)
+  end
+
   def get_domain([record | _], opts) do
     get_domain(record, opts)
+  end
+
+  def get_domain({%input_struct{} = input, _}, opts)
+      when input_struct in [Ash.Query, Ash.Changeset, Ash.ActionInput] do
+    get_domain(input, opts)
+  end
+
+  def get_domain({%input_struct{} = input, _, _}, opts)
+      when input_struct in [Ash.Query, Ash.Changeset, Ash.ActionInput] do
+    get_domain(input, opts)
   end
 
   def get_domain({%resource{}, _}, opts) do
@@ -631,5 +646,13 @@ defmodule Ash.Helpers do
     end
 
     :ok
+  end
+
+  def json_module do
+    if Code.ensure_loaded?(JSON) do
+      JSON
+    else
+      Jason
+    end
   end
 end

@@ -104,6 +104,7 @@ Welcome! Here you will find everything you need to know to get started with and 
 - [Encrypt Attributes](documentation/how-to/encrypt-attributes.livemd)
 - [Prevent Concurrent Writes](documentation/how-to/prevent-concurrent-writes.livemd)
 - [Wrap External APIs](documentation/how-to/wrap-external-apis.livemd)
+- [Define Polymorphic Relationships](documentation/how-to/polymorphic-relationships.livemd)
 
 ---
 
@@ -111,13 +112,13 @@ Welcome! Here you will find everything you need to know to get started with and 
 
 - [Glossary](documentation/topics/reference/glossary.md)
 - [Expressions](documentation/topics/reference/expressions.md)
-- [Ash.Resource DSL](documentation/dsls/DSL:-Ash.Resource.md)
-- [Ash.Domain DSL](documentation/dsls/DSL:-Ash.Domain.md)
-- [Ash.Reactor DSL](documentation/dsls/DSL:-Ash.Reactor.md)
-- [Ash.Notifier.PubSub DSL](documentation/dsls/DSL:-Ash.Notifier.PubSub.md)
-- [Ash.Policy.Authorizer DSL](documentation/dsls/DSL:-Ash.Policy.Authorizer.md)
-- [Ash.DataLayer.Ets DSL](documentation/dsls/DSL:-Ash.DataLayer.Ets.md)
-- [Ash.DataLayer.Mnesia DSL](documentation/dsls/DSL:-Ash.DataLayer.Mnesia.md)
+- [Ash.Resource DSL](documentation/dsls/DSL-Ash.Resource.md)
+- [Ash.Domain DSL](documentation/dsls/DSL-Ash.Domain.md)
+- [Ash.Reactor DSL](documentation/dsls/DSL-Ash.Reactor.md)
+- [Ash.Notifier.PubSub DSL](documentation/dsls/DSL-Ash.Notifier.PubSub.md)
+- [Ash.Policy.Authorizer DSL](documentation/dsls/DSL-Ash.Policy.Authorizer.md)
+- [Ash.DataLayer.Ets DSL](documentation/dsls/DSL-Ash.DataLayer.Ets.md)
+- [Ash.DataLayer.Mnesia DSL](documentation/dsls/DSL-Ash.DataLayer.Mnesia.md)
 - For other reference documentation, see the sidebar & search bar
 
 ## Packages
@@ -163,3 +164,7 @@ The Ash ecosystem consists of numerous packages, all of which have their own doc
 ### Testing
 
 - [Smokestack](https://hexdocs.pm/smokestack) | Declarative test factories for Ash resources
+
+### Examples & External Resources
+
+- [Ash Real World](https://github.com/team-alembic/realworld) | Ash + Phoenix LiveView codebase containing real world examples (CRUD, auth, advanced patterns, etc)

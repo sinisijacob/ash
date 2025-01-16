@@ -80,7 +80,7 @@ defmodule Ash.Type.Keyword do
   def cast_input(nil, _), do: {:ok, nil}
 
   def cast_input(value, constraints) when is_binary(value) do
-    case Jason.decode(value) do
+    case Ash.Helpers.json_module().decode(value) do
       {:ok, value} ->
         cast_input(value, constraints)
 
@@ -146,6 +146,14 @@ defmodule Ash.Type.Keyword do
     end)
   end
 
+  @impl true
+  def generator(constraints) do
+    Ash.Type.Map.generator(constraints)
+    |> StreamData.map(fn value ->
+      Map.to_list(value)
+    end)
+  end
+
   defp check_fields(value, fields) do
     Enum.reduce(fields, {:ok, []}, fn
       {field, field_constraints}, {:ok, checked_value} ->
@@ -191,6 +199,9 @@ defmodule Ash.Type.Keyword do
           {:error, errors} ->
             {:error, Enum.map(errors, fn error -> Keyword.put(error, :field, field) end)}
         end
+
+      {:error, error} ->
+        {:error, [error]}
 
       :error ->
         {:error, [[message: "invalid value", field: field]]}

@@ -96,7 +96,7 @@ defmodule Ash.Type.Struct do
   def cast_input(nil, _), do: {:ok, nil}
 
   def cast_input(value, constraints) when is_binary(value) do
-    case Jason.decode(value) do
+    case Ash.Helpers.json_module().decode(value) do
       {:ok, value} ->
         cast_input(value, constraints)
 
@@ -186,6 +186,19 @@ defmodule Ash.Type.Struct do
   end
 
   @impl true
+  def generator(constraints) do
+    if !constraints[:instance_of] do
+      raise ArgumentError,
+            "Cannot generate instances of the `:struct` type without an `:instance_of` constraint"
+    end
+
+    Ash.Type.Map.generator(constraints)
+    |> StreamData.map(fn value ->
+      struct(constraints[:instance_of], value)
+    end)
+  end
+
+  @impl true
   def apply_constraints(value, constraints) do
     with {:ok, value} <- handle_fields(value, constraints) do
       handle_instance_of(value, constraints)
@@ -202,13 +215,19 @@ defmodule Ash.Type.Struct do
   @impl Ash.Type
   def merge_load(left, right, constraints, context) do
     instance_of = constraints[:instance_of]
-    left = Ash.Query.load(instance_of, left)
-    right = Ash.Query.load(instance_of, right)
 
-    if left.valid? do
-      {:ok, Ash.Query.merge_query_load(left, right, context)}
+    if instance_of do
+      # instance_of_query = Ash.Query.new(instance_of)
+      left = Ash.Query.load(instance_of, left)
+      right = Ash.Query.load(instance_of, right)
+
+      if left.valid? do
+        {:ok, Ash.Query.merge_query_load(left, right, context)}
+      else
+        {:error, Ash.Error.to_ash_error(left.errors)}
+      end
     else
-      {:error, Ash.Error.to_ash_error(left.errors)}
+      {:error, "Structs must have an `instance_of` constraint to be loaded through"}
     end
   end
 
@@ -267,17 +286,16 @@ defmodule Ash.Type.Struct do
               if Enum.all?(keys, &is_atom/1) do
                 {:ok, struct(struct, value)}
               else
-                {:ok,
-                 Map.delete(struct.__struct__, :__struct__)
-                 |> Enum.reduce({:ok, struct(struct)}, fn {key, _value}, {:ok, acc} ->
-                   case Map.fetch(value, to_string(key)) do
-                     {:ok, val} ->
-                       {:ok, Map.put(acc, key, val)}
-
-                     :error ->
-                       {:ok, acc}
-                   end
-                 end)}
+                Map.delete(struct.__struct__(), :__struct__)
+                |> Enum.reduce({:ok, struct(struct)}, fn {key, _value}, {:ok, acc} ->
+                  with :error <- Map.fetch(value, key),
+                       :error <- Map.fetch(value, to_string(key)) do
+                    {:ok, acc}
+                  else
+                    {:ok, val} ->
+                      {:ok, Map.put(acc, key, val)}
+                  end
+                end)
               end
             end
         end

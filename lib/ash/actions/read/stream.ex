@@ -10,7 +10,9 @@ defmodule Ash.Actions.Read.Stream do
       else
         Ash.Query.for_read(
           query,
-          Ash.Resource.Info.primary_action!(query.resource, :read).name
+          Ash.Resource.Info.primary_action!(query.resource, :read).name,
+          %{},
+          opts
         )
       end
 

@@ -60,10 +60,15 @@ defmodule Ash.Resource.Change.Builtins do
   If your resource has global validations (in the top level `validations` block), you may
   want to add `delay_global_validations? true` to your action to ensure they happen on the
   locked record.
+
+  ## Options
+
+  - `:skip_atomic?` - set to `true` to skip in the case that the update is done atomically. Defaults to `false`.
   """
-  @spec get_and_lock_for_update :: Ash.Resource.Change.ref()
-  def get_and_lock_for_update do
-    {Ash.Resource.Change.GetAndLockForUpdate, []}
+  @spec get_and_lock_for_update() :: Ash.Resource.Change.ref()
+  @spec get_and_lock_for_update(opts :: Keyword.t()) :: Ash.Resource.Change.ref()
+  def get_and_lock_for_update(opts \\ []) do
+    {Ash.Resource.Change.GetAndLockForUpdate, opts}
   end
 
   @doc """
@@ -74,10 +79,14 @@ defmodule Ash.Resource.Change.Builtins do
   If your resource has global validations (in the top level `validations` block), you may
   want to add `delay_global_validations? true` to your action to ensure they happen on the
   locked record.
+
+  ## Options
+
+  - `:skip_atomic?` - set to `true` to skip in the case that the update is done atomically. Defaults to `false`.
   """
   @spec get_and_lock(lock :: Ash.DataLayer.lock_type()) :: Ash.Resource.Change.ref()
-  def get_and_lock(lock) do
-    {Ash.Resource.Change.GetAndLock, [lock: lock]}
+  def get_and_lock(lock, opts \\ []) do
+    {Ash.Resource.Change.GetAndLock, Keyword.put(opts, :lock, lock)}
   end
 
   @doc """
@@ -424,7 +433,7 @@ defmodule Ash.Resource.Change.Builtins do
 
   See `Ash.Changeset.before_action/3` for more information.
 
-  Provide the option `append?: true` to place the hook after all other hooks instead of before.
+  Provide the option `prepend?: true` to place the hook before all other hooks instead of after.
 
   ## Example
 
@@ -442,7 +451,7 @@ defmodule Ash.Resource.Change.Builtins do
       unquote(function)
 
       {Ash.Resource.Change.BeforeAction,
-       callback: unquote(value), append?: unquote(Keyword.get(opts, :append?, false))}
+       callback: unquote(value), prepend?: unquote(Keyword.get(opts, :prepend?, false))}
     end
   end
 
@@ -451,7 +460,7 @@ defmodule Ash.Resource.Change.Builtins do
 
   See `Ash.Changeset.before_transaction/3` for more information.
 
-  Provide the option `append?: true` to place the hook after all other hooks instead of before.
+  Provide the option `prepend?: true` to place the hook before all other hooks instead of after.
 
   ## Example
 
@@ -469,7 +478,7 @@ defmodule Ash.Resource.Change.Builtins do
       unquote(function)
 
       {Ash.Resource.Change.BeforeTransaction,
-       callback: unquote(value), append?: unquote(Keyword.get(opts, :append?, false))}
+       callback: unquote(value), prepend?: unquote(Keyword.get(opts, :prepend?, false))}
     end
   end
 end

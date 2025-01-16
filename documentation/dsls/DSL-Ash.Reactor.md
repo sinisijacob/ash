@@ -48,6 +48,7 @@ Declares a step that will call a generic action on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-action-actor)
+ * [context](#reactor-action-context)
  * [inputs](#reactor-action-inputs)
  * [tenant](#reactor-action-tenant)
  * [wait_for](#reactor-action-wait_for)
@@ -104,6 +105,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.action.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-action-context-context){: #reactor-action-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-action-context-transform){: #reactor-action-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.action.inputs
 ```elixir
@@ -207,7 +239,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-action-wait_for-names){: #reactor-action-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-action-wait_for-description){: #reactor-action-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -345,6 +381,7 @@ argument :three, value(3)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
+| [`description`](#reactor-ash_step-argument-description){: #reactor-ash_step-argument-description } | `String.t` |  | An optional description for the argument. |
 | [`transform`](#reactor-ash_step-argument-transform){: #reactor-ash_step-argument-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the argument before it is passed to the step. |
 
 
@@ -380,7 +417,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-ash_step-wait_for-names){: #reactor-ash_step-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-ash_step-wait_for-description){: #reactor-ash_step-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -428,6 +469,7 @@ Caveats/differences from `Ash.bulk_create/4`:
 
 
 ### Nested DSLs
+ * [context](#reactor-bulk_create-context)
  * [actor](#reactor-bulk_create-actor)
  * [load](#reactor-bulk_create-load)
  * [tenant](#reactor-bulk_create-tenant)
@@ -487,6 +529,37 @@ end
 | [`undo_action`](#reactor-bulk_create-undo_action){: #reactor-bulk_create-undo_action } | `atom` |  | The name of the action to call on the resource when the step is to be undone. |
 | [`undo`](#reactor-bulk_create-undo){: #reactor-bulk_create-undo } | `:always \| :never \| :outside_transaction` | `:never` | How to handle undoing this action |
 
+
+## reactor.bulk_create.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-bulk_create-context-context){: #reactor-bulk_create-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-bulk_create-context-transform){: #reactor-bulk_create-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.bulk_create.actor
 ```elixir
@@ -606,7 +679,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-bulk_create-wait_for-names){: #reactor-bulk_create-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-bulk_create-wait_for-description){: #reactor-bulk_create-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -655,6 +732,7 @@ Caveats/differences from `Ash.bulk_update/4`:
 
 ### Nested DSLs
  * [actor](#reactor-bulk_update-actor)
+ * [context](#reactor-bulk_update-context)
  * [inputs](#reactor-bulk_update-inputs)
  * [tenant](#reactor-bulk_update-tenant)
  * [wait_for](#reactor-bulk_update-wait_for)
@@ -695,7 +773,7 @@ end
 | [`max_concurrency`](#reactor-bulk_update-max_concurrency){: #reactor-bulk_update-max_concurrency } | `non_neg_integer` | `0` | If set to a value greater than 0, up to that many tasks will be started to run batches asynchronously. |
 | [`notification_metadata`](#reactor-bulk_update-notification_metadata){: #reactor-bulk_update-notification_metadata } | `map \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value` | `%{}` | Metadata to be merged into the metadata field for all notifications sent from this operation. |
 | [`notify?`](#reactor-bulk_update-notify?){: #reactor-bulk_update-notify? } | `boolean` | `false` | Whether or not to generate any notifications. This may be intensive for large bulk actions. |
-| [`page`](#reactor-bulk_update-page){: #reactor-bulk_update-page } | `keyword` | `[]` | Pagination options, see [the pagination docs for more](read-actions.md#pagination). |
+| [`page`](#reactor-bulk_update-page){: #reactor-bulk_update-page } | `keyword` | `[]` | Pagination options, see `Ash.read/2` for more. |
 | [`read_action`](#reactor-bulk_update-read_action){: #reactor-bulk_update-read_action } | `atom` |  | The action to use when building the read query. |
 | [`return_errors?`](#reactor-bulk_update-return_errors?){: #reactor-bulk_update-return_errors? } | `boolean` | `false` | Whether or not to return all of the errors that occur. Defaults to false to account for large inserts. |
 | [`return_records?`](#reactor-bulk_update-return_records?){: #reactor-bulk_update-return_records? } | `boolean` | `false` | Whether or not to return all of the records that were inserted. Defaults to false to account for large inserts. |
@@ -750,6 +828,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.bulk_update.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-bulk_update-context-context){: #reactor-bulk_update-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-bulk_update-context-transform){: #reactor-bulk_update-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.bulk_update.inputs
 ```elixir
@@ -853,7 +962,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-bulk_update-wait_for-names){: #reactor-bulk_update-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-bulk_update-wait_for-description){: #reactor-bulk_update-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -965,6 +1078,7 @@ argument :three, value(3)
 
 | Name | Type | Default | Docs |
 |------|------|---------|------|
+| [`description`](#reactor-change-argument-description){: #reactor-change-argument-description } | `String.t` |  | An optional description for the argument. |
 | [`transform`](#reactor-change-argument-transform){: #reactor-change-argument-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the argument before it is passed to the step. |
 
 
@@ -1000,7 +1114,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-change-wait_for-names){: #reactor-change-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-change-wait_for-description){: #reactor-change-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -1039,6 +1157,7 @@ Declares a step that will call a create action on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-create-actor)
+ * [context](#reactor-create-context)
  * [inputs](#reactor-create-inputs)
  * [load](#reactor-create-load)
  * [tenant](#reactor-create-tenant)
@@ -1112,6 +1231,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.create.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-create-context-context){: #reactor-create-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-create-context-transform){: #reactor-create-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.create.inputs
 ```elixir
@@ -1246,7 +1396,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-create-wait_for-names){: #reactor-create-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-create-wait_for-description){: #reactor-create-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -1285,6 +1439,7 @@ Declares a step that will call a destroy action on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-destroy-actor)
+ * [context](#reactor-destroy-context)
  * [inputs](#reactor-destroy-inputs)
  * [load](#reactor-destroy-load)
  * [tenant](#reactor-destroy-tenant)
@@ -1354,6 +1509,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.destroy.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-destroy-context-context){: #reactor-destroy-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-destroy-context-transform){: #reactor-destroy-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.destroy.inputs
 ```elixir
@@ -1488,7 +1674,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-destroy-wait_for-names){: #reactor-destroy-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-destroy-wait_for-description){: #reactor-destroy-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -1517,6 +1707,7 @@ Declares a step that will load additional data on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-load-actor)
+ * [context](#reactor-load-context)
  * [tenant](#reactor-load-tenant)
  * [wait_for](#reactor-load-wait_for)
 
@@ -1575,6 +1766,37 @@ Specifies the action actor
 
 Target: `Ash.Reactor.Dsl.Actor`
 
+## reactor.load.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-load-context-context){: #reactor-load-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-load-context-transform){: #reactor-load-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
+
 ## reactor.load.tenant
 ```elixir
 tenant source
@@ -1631,7 +1853,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-load-wait_for-names){: #reactor-load-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-load-wait_for-description){: #reactor-load-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -1660,6 +1886,7 @@ Declares a step that will call a read action on a resource returning a single re
 
 ### Nested DSLs
  * [actor](#reactor-read_one-actor)
+ * [context](#reactor-read_one-context)
  * [inputs](#reactor-read_one-inputs)
  * [load](#reactor-read_one-load)
  * [tenant](#reactor-read_one-tenant)
@@ -1724,6 +1951,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.read_one.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-read_one-context-context){: #reactor-read_one-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-read_one-context-transform){: #reactor-read_one-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.read_one.inputs
 ```elixir
@@ -1858,7 +2116,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-read_one-wait_for-names){: #reactor-read_one-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-read_one-wait_for-description){: #reactor-read_one-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -1887,6 +2149,7 @@ Declares a step that will call a read action on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-read-actor)
+ * [context](#reactor-read-context)
  * [inputs](#reactor-read-inputs)
  * [load](#reactor-read-load)
  * [tenant](#reactor-read-tenant)
@@ -1955,6 +2218,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.read.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-read-context-context){: #reactor-read-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-read-context-transform){: #reactor-read-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.read.inputs
 ```elixir
@@ -2089,7 +2383,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-read-wait_for-names){: #reactor-read-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-read-wait_for-description){: #reactor-read-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -2161,7 +2459,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-transaction-wait_for-names){: #reactor-transaction-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-transaction-wait_for-description){: #reactor-transaction-wait_for-description } | `String.t` |  | An optional description. |
 
 
 
@@ -2200,6 +2502,7 @@ Declares a step that will call an update action on a resource.
 
 ### Nested DSLs
  * [actor](#reactor-update-actor)
+ * [context](#reactor-update-context)
  * [inputs](#reactor-update-inputs)
  * [load](#reactor-update-load)
  * [tenant](#reactor-update-tenant)
@@ -2271,6 +2574,37 @@ Specifies the action actor
 ### Introspection
 
 Target: `Ash.Reactor.Dsl.Actor`
+
+## reactor.update.context
+```elixir
+context context
+```
+
+
+A map to be merged into the action's context
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`context`](#reactor-update-context-context){: #reactor-update-context-context } | `nil \| Reactor.Template.Element \| Reactor.Template.Input \| Reactor.Template.Result \| Reactor.Template.Value \| map` |  | A map to be merged into the action's context. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`transform`](#reactor-update-context-transform){: #reactor-update-context-transform } | `(any -> any) \| module \| nil` |  | An optional transformation function which can be used to modify the context before it is passed to the action. |
+
+
+
+
+
+### Introspection
+
+Target: `Ash.Reactor.Dsl.Context`
 
 ## reactor.update.inputs
 ```elixir
@@ -2405,7 +2739,11 @@ wait_for :create_user
 | Name | Type | Default | Docs |
 |------|------|---------|------|
 | [`names`](#reactor-update-wait_for-names){: #reactor-update-wait_for-names .spark-required} | `atom \| list(atom)` |  | The name of the step to wait for. |
+### Options
 
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`description`](#reactor-update-wait_for-description){: #reactor-update-wait_for-description } | `String.t` |  | An optional description. |
 
 
 

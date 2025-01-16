@@ -13,6 +13,7 @@ defmodule Ash.Policy.Authorizer do
     :check_scenarios,
     :subject,
     :for_fields,
+    :solver_statement,
     context: %{},
     policies: [],
     facts: %{true => true, false => false},
@@ -28,6 +29,7 @@ defmodule Ash.Policy.Authorizer do
           subject: Ash.Query.t() | Ash.Changeset.t() | Ash.ActionInput.t(),
           context: map,
           data: term,
+          solver_statement: term,
           action: Ash.Resource.Actions.Action.t(),
           domain: Ash.Domain.t(),
           scenarios: [map],
@@ -48,6 +50,7 @@ defmodule Ash.Policy.Authorizer do
       type:
         {:or,
          [
+           {:custom, __MODULE__, :template_var, []},
            {:spark_behaviour, Ash.Policy.Check, Ash.Policy.Check.Builtins},
            {:custom, __MODULE__, :expr_check, []}
          ]},
@@ -196,6 +199,7 @@ defmodule Ash.Policy.Authorizer do
   @policy_group %Spark.Dsl.Entity{
     name: :policy_group,
     target: Ash.Policy.PolicyGroup,
+    transform: {Ash.Policy.PolicyGroup, :transform, []},
     describe: """
     Groups a set of policies together by some condition.
 
@@ -469,7 +473,8 @@ defmodule Ash.Policy.Authorizer do
 
   @verifiers [
     Ash.Policy.Authorizer.Verifiers.VerifyInAuthorizers,
-    Ash.Policy.Authorizer.Verifiers.VerifySatSolverImplementation
+    Ash.Policy.Authorizer.Verifiers.VerifySatSolverImplementation,
+    Ash.Policy.Authorizer.Verifiers.VerifyResources
   ]
 
   use Spark.Dsl.Extension,
@@ -481,6 +486,7 @@ defmodule Ash.Policy.Authorizer do
   def exception({:changeset_doesnt_match_filter, filter}, state) do
     Ash.Error.Forbidden.Policy.exception(
       scenarios: Map.get(state, :scenarios),
+      solver_statement: Map.get(state, :solver_statement),
       facts: Map.get(state, :facts),
       policies: Map.get(state, :policies),
       subject: Map.get(state, :subject),
@@ -497,6 +503,7 @@ defmodule Ash.Policy.Authorizer do
     Ash.Error.Forbidden.Policy.exception(
       scenarios: Map.get(state, :scenarios),
       facts: Map.get(state, :facts),
+      solver_statement: Map.get(state, :solver_statement),
       domain: Map.get(state, :domain),
       subject: Map.get(state, :subject),
       policies: Map.get(state, :policies),
@@ -511,46 +518,114 @@ defmodule Ash.Policy.Authorizer do
     Ash.Error.Forbidden.Policy.exception(
       scenarios: Map.get(state, :scenarios),
       domain: Map.get(state, :domain),
+      solver_statement: Map.get(state, :solver_statement),
       facts: Map.get(state, :facts),
       subject: Map.get(state, :subject),
       policies: Map.get(state, :policies),
       resource: Map.get(state, :resource),
       action: Map.get(state, :action),
       actor: Map.get(state, :actor),
-      must_pass_strict_check?: true
+      must_pass_strict_check?: false
     )
   end
 
-  def install(igniter, module, type, _path, _argv) do
-    igniter =
-      with nil <- Igniter.Project.Deps.get_dependency_declaration(igniter, :picosat_elixir),
-           nil <- Igniter.Project.Deps.get_dependency_declaration(igniter, :simple_sat) do
-        solver =
-          Owl.IO.select(
-            [
-              {:picosat_elixir, "~> 0.2"},
-              {:simple_sat, "~> 0.1"}
-            ],
-            label:
-              "Ash.Policy.Authorizer requires a sat solver. Which would you like to use? If on windows, use `simple_sat`, otherwise, use `picosat_elixir`.",
-            render_as: &to_string(elem(&1, 0))
-          )
+  if Code.ensure_loaded?(Igniter) do
+    def install(igniter, module, type, _path, argv) do
+      yes = "--yes" in argv or "-y" in argv
 
-        igniter
-        |> Igniter.Project.Deps.add_dep(solver)
-        |> Igniter.apply_and_fetch_dependencies()
-      else
-        _ ->
+      igniter =
+        with nil <- Igniter.Project.Deps.get_dependency_declaration(igniter, :picosat_elixir),
+             nil <- Igniter.Project.Deps.get_dependency_declaration(igniter, :simple_sat) do
+          {solver, notice_type} =
+            if yes do
+              case :os.type() do
+                {_, :nt} ->
+                  {{:simple_sat, "~> 0.1"}, :windows}
+
+                _ ->
+                  {{:picosat_elixir, "~> 0.2"}, :not_windows}
+              end
+            else
+              case :os.type() do
+                {_, :nt} ->
+                  {Owl.IO.select(
+                     [
+                       {:picosat_elixir, "~> 0.2"},
+                       {:simple_sat, "~> 0.1"}
+                     ],
+                     label: """
+                     Ash.Policy.Authorizer requires a SAT solver (Boolean Satisfiability Solver). This solver is used to
+                     check policy requirements to answer questions like "Is this user allowed to do this action?" and
+                     "What filter must be applied to this query to show only the allowed records a user can see?".
+
+                     Which SAT solver would you like to use?
+
+                     1. `:picosat_elixir` (recommended) - A NIF wrapper around the PicoSAT SAT solver. Fast, production ready, battle tested.
+                     2. `:simple_sat` (only if necessary) - A pure Elixir SAT solver. Slower than PicoSAT, but no NIF dependency.
+                     """,
+                     render_as: &to_string(elem(&1, 0))
+                   ), nil}
+
+                _ ->
+                  {{:picosat_elixir, "~> 0.2"}, :not_windows}
+              end
+            end
+
+          igniter =
+            case notice_type do
+              :windows ->
+                notice =
+                  """
+                  Ash.Policy.Authorizer requires a SAT solver (Boolean Satisfiability Solver). This solver is used to
+                  check policy requirements to answer questions like "Is this user allowed to do this action?" and
+                  "What filter must be applied to this query to show only the allowed records a user can see?".
+
+                  We detected that you are using windows, and so have installed `:simple_sat`, due to
+                  users on windows often having trouble installing `:picosat_elixir`.
+
+                  You can stick with `:simple_sat`, but we suggest switching to `:picosat_elixir` at some point,
+                  for performance reasons.
+
+                  For more, see the documentation for `:picosat_elixir`: https://github.com/bitwalker/picosat_elixir
+                  """
+
+                Igniter.add_notice(igniter, notice)
+
+              :not_windows ->
+                notice =
+                  """
+                  Ash.Policy.Authorizer requires a SAT solver (Boolean Satisfiability Solver). This solver is used to
+                  check policy requirements to answer questions like "Is this user allowed to do this action?" and
+                  "What filter must be applied to this query to show only the allowed records a user can see?".
+
+                  We have installed `:picosat_elixir` by default. This can occasionally cause problems for some users.
+                  If you have issues, you can rerun the command with `--sat-solver simple_sat`, or change the dependency
+                  manually. `:simple_sat` is a less performant solver, but will work anywhere Elixir works. We suggest
+                  getting `:picosat_elixir` working at some point.
+                  """
+
+                Igniter.add_notice(igniter, notice)
+
+              _ ->
+                igniter
+            end
+
           igniter
-      end
+          |> Igniter.Project.Deps.add_dep(solver, yes?: yes)
+          |> Igniter.apply_and_fetch_dependencies(yes: yes, yes_to_deps: true)
+        else
+          _ ->
+            igniter
+        end
 
-    igniter
-    |> Spark.Igniter.add_extension(
-      module,
-      type,
-      :authorizers,
-      Ash.Policy.Authorizer
-    )
+      igniter
+      |> Spark.Igniter.add_extension(
+        module,
+        type,
+        :authorizers,
+        Ash.Policy.Authorizer
+      )
+    end
   end
 
   @doc false
@@ -624,18 +699,14 @@ defmodule Ash.Policy.Authorizer do
     |> strict_check_result()
     |> case do
       {:authorized, authorizer} ->
-        authorizer = strict_check_all_facts(authorizer)
-
         log_successful_policy_breakdown(authorizer)
         {:authorized, authorizer}
 
       {:filter, authorizer, filter} ->
-        authorizer = strict_check_all_facts(authorizer)
         log_successful_policy_breakdown(authorizer, filter)
         {:filter, authorizer, filter}
 
       {:filter_and_continue, filter, authorizer} ->
-        authorizer = strict_check_all_facts(authorizer)
         log_successful_policy_breakdown(authorizer, filter)
         {:filter, authorizer, filter}
 
@@ -656,16 +727,10 @@ defmodule Ash.Policy.Authorizer do
         authorizer,
         context
       ) do
-    case Ash.Policy.Info.field_policies(resource) do
-      [] ->
-        {:ok, filter}
+    {expr, _acc} =
+      replace_refs(expression, authorizer_acc(authorizer, resource, context))
 
-      _ ->
-        {expr, _acc} =
-          replace_refs(expression, authorizer_acc(authorizer, resource, context))
-
-        {:ok, %{filter | expression: expr}}
-    end
+    {:ok, %{filter | expression: expr}}
   end
 
   def alter_filter(filter, _, _), do: {:ok, filter}
@@ -724,8 +789,91 @@ defmodule Ash.Policy.Authorizer do
 
     type = get_type(authorizer.resource, field)
 
-    field =
+    {path, field, actual_field, action, domain} =
       case {field_name, field} do
+        {nil,
+         %Ash.Query.Calculation{module: Ash.Resource.Calculation.Expression, opts: opts} = calc} ->
+          field_and_path =
+            case opts[:expr] do
+              %Ash.Query.Function.Type{arguments: [%Ash.Query.Ref{} = ref | _]} ->
+                {ref.relationship_path, ref.attribute.name}
+
+              %Ash.Query.Function.Type{arguments: [{:_ref, path, field} | _]} ->
+                {path, field}
+
+              %Ash.Query.Call{name: :type, args: [%Ash.Query.Ref{} = ref | _]} ->
+                {ref.relationship_path, ref.attribute}
+
+              %Ash.Query.Call{name: :type, args: [{:_ref, path, field} | _]} ->
+                {path, field}
+
+              %Ash.Query.Ref{} = ref ->
+                {ref.relationship_path, ref.attribute}
+
+              {:_ref, path, field} ->
+                {path, field}
+
+              _ ->
+                nil
+            end
+
+          case field_and_path do
+            {path, %Ash.Query.Calculation{calc_name: calc_name}} when not is_nil(calc_name) ->
+              {path, calc_name}
+
+            {path, %Ash.Query.Aggregate{agg_name: agg_name}} when not is_nil(agg_name) ->
+              {path, agg_name}
+
+            {_, %Ash.Query.Calculation{}} ->
+              nil
+
+            {_, %Ash.Query.Aggregate{}} ->
+              nil
+
+            {path, %{name: name}} when not is_nil(name) ->
+              {path, name}
+
+            {path, field} when is_atom(field) and not is_nil(field) ->
+              {path, field}
+
+            _ ->
+              nil
+          end
+          |> then(fn
+            nil ->
+              raise Ash.Error.Framework.AssumptionFailed,
+                message: """
+                It should not be possible to provide a non-resource calculation as user input.
+                In the future it will be, and that will need to be addressed here.
+                This error message is to prevent forgetting to address that reality.
+
+                Got:
+
+                  #{inspect(calc)}
+                """
+
+            {path, field} ->
+              relationship = Ash.Resource.Info.relationship(authorizer.resource, path)
+
+              domain =
+                Ash.Domain.Info.related_domain(
+                  relationship.destination,
+                  relationship,
+                  relationship.domain || authorizer.domain
+                )
+
+              action =
+                case relationship.read_action do
+                  nil ->
+                    Ash.Resource.Info.primary_action!(relationship.destination, :read)
+
+                  read_action ->
+                    Ash.Resource.Info.action(relationship.destination, read_action)
+                end
+
+              {path, field, calc, action, domain}
+          end)
+
         {nil, %Ash.Query.Calculation{} = calculation} ->
           raise Ash.Error.Framework.AssumptionFailed,
             message: """
@@ -739,23 +887,26 @@ defmodule Ash.Policy.Authorizer do
             """
 
         {_other, field} ->
-          field
+          {[], field, field, context.query.action, context.query.domain}
       end
+
+    resource =
+      Ash.Resource.Info.related(authorizer.resource, path)
 
     if field_name do
       case field_condition(
-             authorizer.resource,
-             field_name,
-             context.query.action,
-             context.query.domain,
+             resource,
+             field,
+             action,
+             domain,
              acc
            ) do
         {:none, acc} ->
-          {{field, data}, acc}
+          {{actual_field, data}, acc}
 
         {:expr, expr, acc} ->
           field =
-            case field do
+            case actual_field do
               %Ash.Query.Calculation{} = calculation ->
                 %Ash.Query.Ref{
                   attribute: calculation,
@@ -786,7 +937,7 @@ defmodule Ash.Policy.Authorizer do
           {{expr, data}, acc}
       end
     else
-      {{field, data}, acc}
+      {{actual_field, data}, acc}
     end
   end
 
@@ -870,24 +1021,31 @@ defmodule Ash.Policy.Authorizer do
   defp do_replace_ref(
          %{
            attribute: %struct{name: name},
-           relationship_path: relationship_path,
-           resource: resource
+           relationship_path: relationship_path
          } = ref,
-         %{stack: [{parent, _path, _action, domain} | _]} = acc
+         %{stack: [{parent, _path, action, domain} | _]} = acc
        )
        when struct in [Ash.Resource.Attribute, Ash.Resource.Aggregate, Ash.Resource.Calculation] do
+    resource = Ash.Resource.Info.related(parent, relationship_path)
+
     action =
-      Map.get(Ash.Resource.Info.relationship(parent, relationship_path) || %{}, :relationship) ||
-        Ash.Resource.Info.primary_action!(resource, :read)
+      case relationship_path do
+        [] ->
+          action
 
-    expression_for_ref(resource, name, action, domain, ref, acc)
-  end
+        path ->
+          case Map.get(
+                 Ash.Resource.Info.relationship(parent, path) || %{},
+                 :read_action
+               ) do
+            nil ->
+              Ash.Resource.Info.primary_action!(resource, :read)
 
-  defp do_replace_ref(
-         %{attribute: %struct{name: name}} = ref,
-         %{stack: [{resource, _path, action, domain} | _]} = acc
-       )
-       when struct in [Ash.Resource.Attribute, Ash.Resource.Aggregate, Ash.Resource.Calculation] do
+            read_action ->
+              Ash.Resource.Info.action(resource, read_action)
+          end
+      end
+
     expression_for_ref(resource, name, action, domain, ref, acc)
   end
 
@@ -916,24 +1074,22 @@ defmodule Ash.Policy.Authorizer do
   defp expression_for_ref(resource, field, action, domain, ref, acc) do
     case field_condition(resource, field, action, domain, acc) do
       {:none, acc} ->
-        {%{ref | input?: false}, acc}
+        {ref, acc}
 
       {:expr, expr, acc} ->
-        expr =
-          Ash.Expr.expr(
-            if ^expr do
-              ^%{ref | input?: false}
-            else
-              nil
-            end
-          )
-
-        {expr, acc}
+        {Ash.Expr.expr(
+           if ^expr do
+             ^ref
+           else
+             nil
+           end
+         ), acc}
     end
   end
 
   defp field_condition(resource, field, action, domain, acc) do
-    if Ash.Policy.Authorizer in Ash.Resource.Info.authorizers(resource) do
+    if Ash.Policy.Authorizer in Ash.Resource.Info.authorizers(resource) &&
+         !Enum.empty?(Ash.Policy.Info.field_policies(resource)) do
       {authorizer, acc} =
         case Map.fetch(acc.authorizers, {resource, action}) do
           {:ok, authorizer} ->
@@ -1147,7 +1303,7 @@ defmodule Ash.Policy.Authorizer do
         Enum.all?(scenario, fn {{check_module, opts}, _} ->
           opts[:access_type] == :filter ||
             match?(
-              {:ok, _},
+              {:ok, v} when is_boolean(v),
               Ash.Policy.Policy.fetch_fact(authorizer.facts, {check_module, opts})
             )
         end)
@@ -1300,7 +1456,7 @@ defmodule Ash.Policy.Authorizer do
     global_check_value =
       Enum.find_value(scenarios, fn scenario ->
         Enum.find(scenario, fn {{check_module, _opts} = check, value} ->
-          check_module.type == :filter &&
+          check_module.type() == :filter &&
             Enum.all?(scenarios, &(Map.fetch(&1, check) == {:ok, value}))
         end)
       end)
@@ -1342,23 +1498,32 @@ defmodule Ash.Policy.Authorizer do
   end
 
   defp check_result(authorizer) do
-    Enum.reduce_while(authorizer.data, {:ok, authorizer}, fn record, {:ok, authorizer} ->
-      authorizer.scenarios
-      |> Enum.reject(&scenario_impossible?(&1, authorizer, record))
-      |> case do
-        [] ->
-          {:halt, {:error, :forbidden, authorizer}}
+    {data, authorizer, any_forbidden?} =
+      authorizer.data
+      |> Enum.reduce({[], false, authorizer}, fn record, {data, any_forbidden?, authorizer} ->
+        authorizer.scenarios
+        |> Enum.reject(&scenario_impossible?(&1, authorizer, record))
+        |> case do
+          [] ->
+            {[record | data], authorizer, any_forbidden?}
 
-        scenarios ->
-          do_check_result(scenarios, authorizer, record)
-      end
-    end)
-    |> case do
-      {:ok, authorizer} ->
-        log_successful_policy_breakdown(authorizer)
+          scenarios ->
+            case do_check_result(scenarios, authorizer, record) do
+              {:ok, authorizer} ->
+                {[record | data], authorizer, any_forbidden?}
 
-      other ->
-        other
+              {:forbidden, authorizer} ->
+                {data, authorizer, true}
+            end
+        end
+      end)
+
+    log_successful_policy_breakdown(authorizer)
+
+    if any_forbidden? do
+      {:data, Enum.reverse(data)}
+    else
+      :authorized
     end
   end
 
@@ -1385,7 +1550,12 @@ defmodule Ash.Policy.Authorizer do
             filter,
             authorizer.policies,
             success?: true,
-            help_text?: false
+            help_text?: false,
+            domain: authorizer.domain,
+            resource: authorizer.resource,
+            actor: authorizer.actor,
+            subject: authorizer.subject,
+            for_fields: authorizer.for_fields
           )
       ]
     )
@@ -1393,15 +1563,21 @@ defmodule Ash.Policy.Authorizer do
 
   defp do_check_result(cleaned_scenarios, authorizer, record) do
     if Enum.any?(cleaned_scenarios, &scenario_applies?(&1, authorizer, record)) do
-      {:cont, {:ok, authorizer}}
+      {:ok, authorizer}
     else
-      check_facts_until_known(cleaned_scenarios, authorizer, record)
+      case Enum.reject(cleaned_scenarios, &scenario_impossible?(&1, authorizer, record)) do
+        [] ->
+          {:forbidden, authorizer}
+
+        scenarios ->
+          check_facts_until_known(scenarios, authorizer, record)
+      end
     end
   end
 
   defp scenario_applies?(scenario, authorizer, record) do
     Enum.all?(scenario, fn {clause, requirement} ->
-      case Map.fetch(authorizer.facts, clause) do
+      case Policy.fetch_fact(authorizer.facts, clause) do
         {:ok, ^requirement} ->
           true
 
@@ -1426,7 +1602,7 @@ defmodule Ash.Policy.Authorizer do
   defp scenario_impossible?(scenario, authorizer, record) do
     Enum.any?(scenario, fn {clause, requirement} ->
       case Map.fetch(authorizer.facts, clause) do
-        {:ok, value} when value != requirement ->
+        {:ok, value} when is_boolean(value) and value != requirement ->
           true
 
         _ ->
@@ -1448,20 +1624,22 @@ defmodule Ash.Policy.Authorizer do
   end
 
   defp check_facts_until_known(scenarios, authorizer, record) do
-    new_authorizer =
-      scenarios
-      |> find_fact_to_check(authorizer)
-      |> check_fact(authorizer)
-
     scenarios
-    |> Enum.reject(&scenario_impossible?(&1, new_authorizer, record))
+    |> find_fact_to_check(authorizer)
     |> case do
-      [] ->
-        {:halt, {:forbidden, authorizer}}
+      nil ->
+        if Enum.any?(scenarios, &scenario_applies?(&1, authorizer, record)) do
+          {:ok, authorizer}
+        else
+          {:forbidden, authorizer}
+        end
 
-      scenarios ->
+      {fact, _value} ->
+        new_authorizer =
+          check_fact(fact, authorizer)
+
         if Enum.any?(scenarios, &scenario_applies?(&1, new_authorizer, record)) do
-          {:cont, {:ok, new_authorizer}}
+          {:ok, new_authorizer}
         else
           check_facts_until_known(scenarios, new_authorizer, record)
         end
@@ -1502,65 +1680,72 @@ defmodule Ash.Policy.Authorizer do
     scenarios
     |> Enum.concat()
     |> Enum.find(fn {key, _value} ->
-      not Map.has_key?(authorizer.facts, key) and not Map.has_key?(authorizer.data_facts, key)
+      authorizer.facts[key] in [:unknown, nil] and not Map.has_key?(authorizer.data_facts, key)
     end)
-    |> case do
-      nil -> raise "Assumption failed"
-      {key, _value} -> key
-    end
   end
 
   defp strict_check_result(authorizer, opts \\ []) do
-    case Checker.strict_check_scenarios(%{authorizer | for_fields: opts[:for_fields]}) do
-      {:ok, true, authorizer} ->
-        {:authorized, authorizer}
+    %{authorizer | for_fields: opts[:for_fields]}
+    |> Checker.strict_check_scenarios()
+    |> handle_strict_check_result(opts)
+  end
 
-      {:ok, none, authorizer} when none in [false, []] ->
+  defp handle_strict_check_result({:ok, true, authorizer}, _opts), do: {:authorized, authorizer}
+
+  defp handle_strict_check_result({:ok, none, authorizer}, opts) when none in [false, []] do
+    handle_strict_check_result({:error, authorizer, :unsatisfiable}, opts)
+  end
+
+  defp handle_strict_check_result({:ok, scenarios, authorizer}, _opts) do
+    case Checker.find_real_scenarios(scenarios, authorizer.facts) do
+      [] ->
+        maybe_strict_filter(authorizer, scenarios)
+
+      _real_scenarios ->
+        {:authorized, authorizer}
+    end
+  end
+
+  defp handle_strict_check_result({:error, authorizer, :unsatisfiable}, opts) do
+    if authorizer.action.type == :action || Enum.empty?(authorizer.policies || []) do
+      {:error,
+       Ash.Error.Forbidden.Policy.exception(
+         facts: authorizer.facts,
+         domain: Map.get(authorizer, :domain),
+         solver_statement: Map.get(authorizer, :solver_statement),
+         policies: authorizer.policies,
+         subject: authorizer.subject,
+         context_description: opts[:context_description],
+         for_fields: opts[:for_fields],
+         resource: Map.get(authorizer, :resource),
+         action: Map.get(authorizer, :action),
+         actor: Map.get(authorizer, :actor),
+         scenarios: []
+       )}
+    else
+      if forbidden_due_to_strict_policy?(authorizer) do
         {:error,
          Ash.Error.Forbidden.Policy.exception(
            facts: authorizer.facts,
            domain: Map.get(authorizer, :domain),
+           solver_statement: Map.get(authorizer, :solver_statement),
            policies: authorizer.policies,
            subject: authorizer.subject,
            context_description: opts[:context_description],
            for_fields: opts[:for_fields],
            resource: Map.get(authorizer, :resource),
-           actor: Map.get(authorizer, :actor),
            action: Map.get(authorizer, :action),
+           actor: Map.get(authorizer, :actor),
            scenarios: []
          )}
-
-      {:ok, scenarios, authorizer} ->
-        case Checker.find_real_scenarios(scenarios, authorizer.facts) do
-          [] ->
-            maybe_strict_filter(authorizer, scenarios)
-
-          _real_scenarios ->
-            {:authorized, authorizer}
-        end
-
-      {:error, authorizer, :unsatisfiable} ->
-        if forbidden_due_to_strict_policy?(authorizer) do
-          {:error,
-           Ash.Error.Forbidden.Policy.exception(
-             facts: authorizer.facts,
-             domain: Map.get(authorizer, :domain),
-             policies: authorizer.policies,
-             subject: authorizer.subject,
-             context_description: opts[:context_description],
-             for_fields: opts[:for_fields],
-             resource: Map.get(authorizer, :resource),
-             action: Map.get(authorizer, :action),
-             actor: Map.get(authorizer, :actor),
-             scenarios: []
-           )}
-        else
-          {:filter, authorizer, false}
-        end
-
-      {:error, _authorizer, exception} ->
-        {:error, Ash.Error.to_ash_error(exception)}
+      else
+        {:filter, authorizer, false}
+      end
     end
+  end
+
+  defp handle_strict_check_result({:error, _authorizer, exception}, _opts) do
+    {:error, Ash.Error.to_ash_error(exception)}
   end
 
   defp maybe_strict_filter(authorizer, scenarios) do
@@ -1579,14 +1764,25 @@ defmodule Ash.Policy.Authorizer do
          authorizer.action.type != :read do
       true
     else
-      authorizer.policies
-      |> Enum.any?(fn policy ->
-        policy.access_type == :strict and
-          Enum.all?(policy.condition || [], fn {check_module, check_opts} ->
-            Policy.fetch_fact(authorizer.facts, {check_module, check_opts}) == {:ok, true}
-          end) and
-          policy_fails_statically?(authorizer, policy)
-      end)
+      if Enum.any?(authorizer.policies, fn policy ->
+           Enum.all?(policy.condition || [], fn {check_module, check_opts} ->
+             Policy.fetch_fact(authorizer.facts, {check_module, check_opts}) in [
+               {:ok, true},
+               :unknown
+             ]
+           end)
+         end) do
+        authorizer.policies
+        |> Enum.any?(fn policy ->
+          policy.access_type == :strict and
+            Enum.all?(policy.condition || [], fn {check_module, check_opts} ->
+              Policy.fetch_fact(authorizer.facts, {check_module, check_opts}) == {:ok, true}
+            end) and
+            policy_fails_statically?(authorizer, policy)
+        end)
+      else
+        true
+      end
     end
   end
 
@@ -1636,12 +1832,14 @@ defmodule Ash.Policy.Authorizer do
     }
   end
 
-  def expr_check(expr) when is_function(expr) do
-    {:error,
-     "Inline function checks expect a function with arity 2. Got #{Function.info(expr)[:arity]}"}
-  end
-
   def expr_check(expr) do
     {:ok, {Ash.Policy.Check.Expression, expr: expr}}
   end
+
+  def template_var({template_var, _} = expr)
+      when template_var in [:_actor, :_arg, :_ref, :_parent, :_atomic_ref, :_context] do
+    {:ok, {Ash.Policy.Check.Expression, expr: expr}}
+  end
+
+  def template_var(_), do: {:error, "not a template var"}
 end

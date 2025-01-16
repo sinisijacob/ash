@@ -56,6 +56,12 @@ defmodule Ash.Actions.Destroy do
                                 metadata do
         case do_run(domain, changeset, action, opts) do
           {:error, error} ->
+            error =
+              Ash.Error.to_error_class(
+                error,
+                bread_crumbs: "Error returned from: #{inspect(changeset.resource)}.#{action.name}"
+              )
+
             if opts[:tracer] do
               stacktrace =
                 case error do
@@ -83,7 +89,13 @@ defmodule Ash.Actions.Destroy do
     end
   rescue
     e ->
-      reraise Ash.Error.to_error_class(e, changeset: changeset, stacktrace: __STACKTRACE__),
+      reraise Ash.Error.to_error_class(e,
+                changeset: changeset,
+                stacktrace: __STACKTRACE__,
+                bread_crumbs: [
+                  "Exception raised in: #{inspect(changeset.resource)}.#{action.name}"
+                ]
+              ),
               __STACKTRACE__
   end
 
@@ -174,6 +186,8 @@ defmodule Ash.Actions.Destroy do
           case Helpers.load({:ok, changeset.data, %{}}, changeset, domain,
                  actor: opts[:actor],
                  reuse_values?: true,
+                 action:
+                   Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
                  authorize?: opts[:authorize?],
                  tracer: opts[:tracer]
                ) do
@@ -228,6 +242,12 @@ defmodule Ash.Actions.Destroy do
                       |> Helpers.select(changeset)
                       |> Helpers.restrict_field_access(changeset)
                     else
+                      destroyed =
+                        Helpers.select(destroyed, %{
+                          resource: changeset.resource,
+                          select: changeset.action_select
+                        })
+
                       {:ok, destroyed, %{notifications: []}}
                       |> Helpers.notify(changeset, opts)
                     end

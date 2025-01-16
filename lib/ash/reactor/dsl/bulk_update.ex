@@ -16,6 +16,7 @@ defmodule Ash.Reactor.Dsl.BulkUpdate do
             authorize_query?: true,
             authorize?: nil,
             batch_size: nil,
+            context: nil,
             description: nil,
             domain: nil,
             filter: %{},
@@ -66,6 +67,7 @@ defmodule Ash.Reactor.Dsl.BulkUpdate do
           authorize_query?: boolean,
           authorize?: boolean | nil,
           batch_size: nil | pos_integer(),
+          context: nil | Ash.Reactor.Dsl.Context.t(),
           description: String.t() | nil,
           domain: Ash.Domain.t(),
           filter:
@@ -137,11 +139,12 @@ defmodule Ash.Reactor.Dsl.BulkUpdate do
       imports: [Reactor.Dsl.Argument, Ash.Expr],
       entities: [
         actor: [Ash.Reactor.Dsl.Actor.__entity__()],
+        context: [Ash.Reactor.Dsl.Context.__entity__()],
         inputs: [Ash.Reactor.Dsl.Inputs.__entity__()],
         tenant: [Ash.Reactor.Dsl.Tenant.__entity__()],
         wait_for: [Reactor.Dsl.WaitFor.__entity__()]
       ],
-      singleton_entity_keys: [:actor, :tenant],
+      singleton_entity_keys: [:actor, :context, :tenant],
       recursive_as: :steps,
       schema:
         [
@@ -232,8 +235,7 @@ defmodule Ash.Reactor.Dsl.BulkUpdate do
           ],
           page: [
             type: :keyword_list,
-            doc:
-              "Pagination options, see [the pagination docs for more](read-actions.md#pagination).",
+            doc: "Pagination options, see `Ash.read/2` for more.",
             required: false,
             default: []
           ],

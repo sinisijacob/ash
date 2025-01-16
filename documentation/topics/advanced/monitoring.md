@@ -22,10 +22,12 @@ Note the mention of `:start` and `:stop` suffixes. The event below `[:ash, (doma
 - `[:ash, (domain_short_name), :update]` - The execution of a update action. Use `resource_short_name` and `action` metadata to break down measurements.
 - `[:ash, (domain_short_name), :read]` - The execution of a read action. Use `resource_short_name` and `action` metadata to break down measurements.
 - `[:ash, (domain_short_name), :destroy]` - The execution of a destroy action. Use `resource_short_name` and `action` metadata to break down measurements.
+- `[:ash, (domain_short_name), :action]` - The execution of a generic action. Use `resource_short_name` and `action` metadata to break down measurements.
 - `[:ash, :changeset]` - A changeset being processed for a given action, i.e with `Ash.Changeset.for_create`. Use `resource_short_name` metadata to break down measurements.
 - `[:ash, :query]` - A query being processed for an action, with `Ash.Query.for_read`. Use `resource_short_name` metadata to break down measurements.
 - `[:ash, :validation]` - A validation being run on a changeset. Use `resource_short_name` and `validation` metadata to break down measurements.
 - `[:ash, :change]` - A change being run on a changeset. Use `resource_short_name` and `change` metadata to break down measurements.
+- `[:ash, :calculation]` - A calculation being computed in the app. Use `resource_short_name` and `calculation` metadata to break down measurements.
 - `[:ash, :before_action]` - A before_action being run on a changeset. Use `resource_short_name` to break down measurements.
 - `[:ash, :after_action]` - An after_action being run on a changeset. Use `resource_short_name` to break down measurements.
 - `[:ash, :preparation]` - A preparation being run on a changeset. Use `resource_short_name` and `preparation` metadata to break down measurements.
@@ -67,6 +69,7 @@ These are the list of trace types.
 - :changeset
 - :validation
 - :change
+- :calculation
 - :before_transaction
 - :before_action
 - :after_transaction

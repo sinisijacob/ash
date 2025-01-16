@@ -63,30 +63,34 @@ defmodule Ash.Type.Union do
 
   @impl true
   def init(constraints) do
-    constraints[:types]
-    |> List.wrap()
-    |> Enum.reduce_while({:ok, []}, fn {name, config}, {:ok, types} ->
-      type = config[:type]
-      constraints = config[:constraints] || []
+    if is_list(constraints[:types]) do
+      constraints[:types]
+      |> List.wrap()
+      |> Enum.reduce_while({:ok, []}, fn {name, config}, {:ok, types} ->
+        type = config[:type]
+        constraints = config[:constraints] || []
 
-      if Keyword.get(config, :init?, true) do
-        case Ash.Type.init(type, constraints) do
-          {:ok, constraints} ->
-            {:cont, {:ok, [{name, Keyword.put(config, :constraints, constraints)} | types]}}
+        if Keyword.get(config, :init?, true) do
+          case Ash.Type.init(type, constraints) do
+            {:ok, constraints} ->
+              {:cont, {:ok, [{name, Keyword.put(config, :constraints, constraints)} | types]}}
 
-          {:error, error} ->
-            {:halt, {:error, error}}
+            {:error, error} ->
+              {:halt, {:error, error}}
+          end
+        else
+          {:cont, {:ok, [{name, config} | types]}}
         end
-      else
-        {:cont, {:ok, [{name, config} | types]}}
-      end
-    end)
-    |> case do
-      {:ok, types} ->
-        {:ok, Keyword.put(constraints, :types, Enum.reverse(types))}
+      end)
+      |> case do
+        {:ok, types} ->
+          {:ok, Keyword.put(constraints, :types, Enum.reverse(types))}
 
-      {:error, error} ->
-        {:error, error}
+        {:error, error} ->
+          {:error, error}
+      end
+    else
+      {:error, "types must be a list, got `#{constraints[:types]}`"}
     end
   end
 
@@ -406,6 +410,18 @@ defmodule Ash.Type.Union do
     end
   end
 
+  def cast_input(%{"_union_type" => union_type, "_union_value" => value}, constraints) do
+    case Enum.find(constraints[:types], fn {key, _} ->
+           to_string(key) == union_type
+         end) do
+      {type, _config} ->
+        cast_input(%Ash.Union{value: value, type: type}, constraints)
+
+      _ ->
+        cast_input(Map.delete(value, "_union_type"), constraints)
+    end
+  end
+
   def cast_input(%{"_union_type" => union_type} = value, constraints) do
     case Enum.find(constraints[:types], fn {key, _} ->
            to_string(key) == union_type
@@ -633,7 +649,7 @@ defmodule Ash.Type.Union do
 
       :map_with_tag ->
         case Enum.find(types, fn {_type_name, config} ->
-               unless config[:tag] && config[:tag_value] do
+               if !(config[:tag] && config[:tag_value]) do
                  raise "Found a type without a tag when using the `:map_with_tag` storage constraint. Constraints: #{inspect(constraints)}"
                end
 
@@ -684,7 +700,7 @@ defmodule Ash.Type.Union do
         :map_with_tag ->
           config = union_constraints[:types][type_name]
 
-          unless config[:tag] && config[:tag_value] do
+          if !(config[:tag] && config[:tag_value]) do
             raise "Found a type without a tag when using the `:map_with_tag` storage constraint. Constraints: #{inspect(union_constraints)}"
           end
 
@@ -696,6 +712,9 @@ defmodule Ash.Type.Union do
   end
 
   @impl true
+  def handle_change(nil, nil, _constraints),
+    do: {:ok, nil}
+
   def handle_change(nil, %Ash.Union{type: type_name, value: new_value}, constraints),
     do: do_handle_change(type_name, nil, new_value, constraints)
 

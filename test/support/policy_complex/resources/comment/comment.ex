@@ -14,10 +14,20 @@ defmodule Ash.Test.Support.PolicyComplex.Comment do
       authorize_if relates_to_actor_via([:author, :friends])
     end
 
+    policy action(:always_forbid) do
+      access_type :strict
+      forbid_if always()
+    end
+
     policy action_type(:create) do
       access_type :runtime
       forbid_unless relating_to_actor(:author)
       authorize_if Ash.Test.Support.PolicyComplex.Comment.Checks.ManualCanSeePost
+    end
+
+    policy action(:read_with_runtime_check) do
+      access_type :runtime
+      authorize_if Ash.Test.Support.PolicyComplex.Comment.Checks.RuntimeCheck
     end
   end
 
@@ -38,6 +48,8 @@ defmodule Ash.Test.Support.PolicyComplex.Comment do
     default_accept :*
     defaults [:read, :destroy, update: :*]
 
+    read :always_forbid
+
     create :create do
       accept [:text]
 
@@ -50,6 +62,8 @@ defmodule Ash.Test.Support.PolicyComplex.Comment do
     end
 
     read :read_through_post
+
+    read :read_with_runtime_check
   end
 
   code_interface do

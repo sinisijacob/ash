@@ -2,6 +2,7 @@ defmodule Ash.Actions.Update.Bulk do
   @moduledoc false
 
   require Ash.Query
+  import Ash.Expr
 
   @spec run(Ash.Domain.t(), Enumerable.t() | Ash.Query.t(), atom(), input :: map, Keyword.t()) ::
           Ash.BulkResult.t()
@@ -105,7 +106,9 @@ defmodule Ash.Actions.Update.Bulk do
 
           _ ->
             query =
-              Ash.Query.do_filter(query, opts[:filter])
+              query
+              |> Ash.Query.do_filter(opts[:filter])
+              |> handle_attribute_multitenancy()
 
             read_opts =
               opts
@@ -118,6 +121,7 @@ defmodule Ash.Actions.Update.Bulk do
               end)
               |> Keyword.put(:authorize?, opts[:authorize?] && opts[:authorize_query?])
               |> Keyword.put(:domain, domain)
+              |> Keyword.delete(:load)
 
             if query.limit && query.limit < (opts[:batch_size] || 100) do
               read_opts = Keyword.take(read_opts, Keyword.keys(Ash.read_opts()))
@@ -240,10 +244,16 @@ defmodule Ash.Actions.Update.Bulk do
                 :bulk_destroy
             end
 
-          if (has_after_batch_hooks? || !Enum.empty?(atomic_changeset.after_action)) &&
+          prefer_transaction? =
+            has_after_batch_hooks? || !Enum.empty?(atomic_changeset.after_action) ||
+              Ash.DataLayer.prefer_transaction_for_atomic_updates?(atomic_changeset.resource)
+
+          if prefer_transaction? &&
                Keyword.get(opts, :transaction, true) do
+            Ash.DataLayer.in_transaction?(atomic_changeset.resource)
+
             Ash.DataLayer.transaction(
-              List.wrap(atomic_changeset.resource) ++ atomic_changeset.action.touches_resources,
+              atomic_changeset.resource,
               fn ->
                 do_atomic_update(query, atomic_changeset, has_after_batch_hooks?, input, opts)
               end,
@@ -307,6 +317,21 @@ defmodule Ash.Actions.Update.Bulk do
           end
         end
     end
+  rescue
+    e ->
+      action_name =
+        case action do
+          %{name: name} -> name
+          name -> name
+        end
+
+      reraise Ash.Error.to_error_class(e,
+                stacktrace: __STACKTRACE__,
+                bread_crumbs: [
+                  "Exception raised in bulk update: #{inspect(opts[:resource])}.#{action_name}"
+                ]
+              ),
+              __STACKTRACE__
   end
 
   def run(domain, stream, action, input, opts, not_atomic_reason) do
@@ -454,6 +479,21 @@ defmodule Ash.Actions.Update.Bulk do
       |> do_run(stream, action, input, opts, metadata_key, context_key, not_atomic_reason)
       |> handle_bulk_result(metadata_key, opts)
     end
+  rescue
+    e ->
+      action_name =
+        case action do
+          %{name: name} -> name
+          name -> name
+        end
+
+      reraise Ash.Error.to_error_class(e,
+                stacktrace: __STACKTRACE__,
+                bread_crumbs: [
+                  "Exception raised in bulk update: #{inspect(opts[:resource])}.#{action_name}"
+                ]
+              ),
+              __STACKTRACE__
   end
 
   defp do_atomic_update(query, atomic_changeset, has_after_batch_hooks?, input, opts) do
@@ -491,13 +531,8 @@ defmodule Ash.Actions.Update.Bulk do
     {all_changes, conditional_after_batch_hooks, calculations} =
       hooks_and_calcs_for_update_query(atomic_changeset, context, query, opts)
 
-    update_query_opts =
-      opts
-      |> Keyword.take([:return_records?, :tenant])
-      |> Map.new()
-      |> Map.put(:calculations, calculations)
-      |> Map.put(
-        :action_select,
+    action_select =
+      if Ash.DataLayer.data_layer_can?(atomic_changeset.resource, :action_select) do
         Enum.uniq(
           Enum.concat(
             Ash.Resource.Info.action_select(atomic_changeset.resource, atomic_changeset.action),
@@ -509,6 +544,18 @@ defmodule Ash.Actions.Update.Bulk do
             )
           )
         )
+      else
+        MapSet.to_list(Ash.Resource.Info.attribute_names(atomic_changeset.resource))
+      end
+
+    update_query_opts =
+      opts
+      |> Keyword.take([:return_records?, :tenant])
+      |> Map.new()
+      |> Map.put(:calculations, calculations)
+      |> Map.put(
+        :action_select,
+        action_select
       )
 
     with {:ok, query} <-
@@ -520,8 +567,12 @@ defmodule Ash.Actions.Update.Bulk do
          %Ash.Changeset{valid?: true} = atomic_changeset <-
            Ash.Changeset.handle_allow_nil_atomics(atomic_changeset, opts[:actor]),
          atomic_changeset <- sort_atomic_changes(atomic_changeset),
+         query <- handle_attribute_multitenancy(query),
          {:ok, data_layer_query} <-
            Ash.Query.data_layer_query(query) do
+      atomic_changeset =
+        Ash.Changeset.set_context(atomic_changeset, %{changed?: true})
+
       case Ash.DataLayer.update_query(
              data_layer_query,
              atomic_changeset,
@@ -533,6 +584,9 @@ defmodule Ash.Actions.Update.Bulk do
           }
 
         {:ok, results} ->
+          results =
+            Ash.Actions.Helpers.select(results, %{resource: query.resource, select: action_select})
+
           results =
             case results do
               [result] ->
@@ -571,8 +625,6 @@ defmodule Ash.Actions.Update.Bulk do
                 fn result, {results, errors, error_count, notifications} ->
                   # we can't actually know if the changeset changed or not when doing atomics
                   # so we just have to set it to statically true here.
-                  atomic_changeset =
-                    Ash.Changeset.set_context(atomic_changeset, %{changed?: true})
 
                   case Ash.Changeset.run_after_actions(result, atomic_changeset, []) do
                     {:error, error} ->
@@ -664,7 +716,13 @@ defmodule Ash.Actions.Update.Bulk do
             status: :error,
             error_count: 1,
             notifications: [],
-            errors: [Ash.Error.to_error_class(error)]
+            errors: [
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            ]
           }
 
         {:error,
@@ -679,13 +737,26 @@ defmodule Ash.Actions.Update.Bulk do
             )
 
           if Ash.DataLayer.in_transaction?(atomic_changeset.resource) do
-            Ash.DataLayer.rollback(atomic_changeset.resource, Ash.Error.to_error_class(error))
+            Ash.DataLayer.rollback(
+              atomic_changeset.resource,
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            )
           else
             %Ash.BulkResult{
               status: :error,
               error_count: 1,
               notifications: [],
-              errors: [Ash.Error.to_error_class(error)]
+              errors: [
+                Ash.Error.to_error_class(error,
+                  bread_crumbs: [
+                    "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                  ]
+                )
+              ]
             }
           end
 
@@ -694,7 +765,13 @@ defmodule Ash.Actions.Update.Bulk do
             status: :error,
             error_count: 1,
             notifications: [],
-            errors: [Ash.Error.to_error_class(error)]
+            errors: [
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            ]
           }
 
         {:error, error} ->
@@ -705,7 +782,13 @@ defmodule Ash.Actions.Update.Bulk do
               status: :error,
               error_count: 1,
               notifications: [],
-              errors: [Ash.Error.to_error_class(error)]
+              errors: [
+                Ash.Error.to_error_class(error,
+                  bread_crumbs: [
+                    "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                  ]
+                )
+              ]
             }
           end
       end
@@ -718,7 +801,13 @@ defmodule Ash.Actions.Update.Bulk do
             status: :error,
             error_count: 1,
             notifications: [],
-            errors: [Ash.Error.to_error_class(error)]
+            errors: [
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            ]
           }
         end
 
@@ -773,7 +862,13 @@ defmodule Ash.Actions.Update.Bulk do
           status: :error,
           error_count: 1,
           notifications: [],
-          errors: [Ash.Error.to_error_class(error)]
+          errors: [
+            Ash.Error.to_error_class(error,
+              bread_crumbs: [
+                "Returned from bulk query update: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+              ]
+            )
+          ]
         }
     end
   end
@@ -1134,11 +1229,22 @@ defmodule Ash.Actions.Update.Bulk do
         end)
       end
     )
-    |> run_batches(ref, opts)
+    |> run_batches(ref, atomic_changeset.resource, atomic_changeset.action.name, opts)
   end
 
   defp do_stream_batches(domain, stream, action, input, opts, metadata_key, context_key) do
     resource = opts[:resource]
+
+    action_select =
+      Enum.uniq(
+        Enum.concat(
+          Ash.Resource.Info.action_select(resource, action.name),
+          List.wrap(
+            opts[:select] ||
+              MapSet.to_list(Ash.Resource.Info.selected_by_default_attribute_names(resource))
+          )
+        )
+      )
 
     manual_action_can_bulk? =
       case action.manual do
@@ -1195,7 +1301,8 @@ defmodule Ash.Actions.Update.Bulk do
             ref,
             context_key,
             metadata_key,
-            base_changeset
+            base_changeset,
+            action_select
           )
         after
           if opts[:notify?] && !opts[:return_notifications?] do
@@ -1207,10 +1314,10 @@ defmodule Ash.Actions.Update.Bulk do
         end
       end
     )
-    |> run_batches(ref, opts)
+    |> run_batches(ref, resource, action.name, opts)
   end
 
-  defp run_batches(changeset_stream, ref, opts) do
+  defp run_batches(changeset_stream, ref, resource, action_name, opts) do
     if opts[:return_stream?] do
       Stream.concat(changeset_stream)
     else
@@ -1243,6 +1350,16 @@ defmodule Ash.Actions.Update.Bulk do
           end
 
         {errors, error_count} = Process.get({:bulk_update_errors, ref}) || {[], 0}
+
+        errors =
+          Enum.map(
+            errors,
+            &Ash.Error.to_ash_error(&1, [],
+              bread_crumbs: [
+                "Returned from bulk update: #{inspect(resource)}.#{action_name}"
+              ]
+            )
+          )
 
         bulk_result = %Ash.BulkResult{
           records: records,
@@ -1463,6 +1580,22 @@ defmodule Ash.Actions.Update.Bulk do
     )
   end
 
+  defp handle_attribute_multitenancy(query) do
+    if query.tenant && Ash.Resource.Info.multitenancy_strategy(query.resource) == :attribute do
+      multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(query.resource)
+
+      if multitenancy_attribute do
+        {m, f, a} = Ash.Resource.Info.multitenancy_parse_attribute(query.resource)
+        attribute_value = apply(m, f, [query.to_tenant | a])
+        Ash.Query.filter(query, ^ref(multitenancy_attribute) == ^attribute_value)
+      else
+        query
+      end
+    else
+      query
+    end
+  end
+
   defp notification_stream(ref) do
     the_notifications = Process.delete({:bulk_update_notifications, ref})
 
@@ -1489,7 +1622,8 @@ defmodule Ash.Actions.Update.Bulk do
          ref,
          context_key,
          metadata_key,
-         base_changeset
+         base_changeset,
+         action_select
        ) do
     %{
       must_return_records?: must_return_records_for_changes?,
@@ -1510,7 +1644,8 @@ defmodule Ash.Actions.Update.Bulk do
 
     {batch, must_be_simple} =
       Enum.reduce(batch, {[], []}, fn changeset, {batch, must_be_simple} ->
-        if changeset.after_transaction in [[], nil] do
+        if changeset.around_transaction in [[], nil] and changeset.after_transaction in [[], nil] and
+             changeset.around_action in [[], nil] do
           changeset = Ash.Changeset.run_before_transaction_hooks(changeset)
           {[changeset | batch], must_be_simple}
         else
@@ -1545,6 +1680,17 @@ defmodule Ash.Actions.Update.Bulk do
               })
             ]
 
+          {:ok, result, notifications} ->
+            Process.put({:any_success?, ref}, true)
+
+            store_notification(ref, notifications, opts)
+
+            [
+              Ash.Resource.set_metadata(result, %{
+                metadata_key => changeset.context |> Map.get(context_key) |> Map.get(:index)
+              })
+            ]
+
           {:error, error} ->
             store_error(ref, error, opts)
             []
@@ -1571,34 +1717,22 @@ defmodule Ash.Actions.Update.Bulk do
         Ash.DataLayer.transaction(
           List.wrap(resource) ++ action.touches_resources,
           fn ->
-            tmp_ref = make_ref()
-
-            result =
-              do_handle_batch(
-                batch,
-                domain,
-                resource,
-                action,
-                opts,
-                all_changes,
-                tmp_ref,
-                metadata_key,
-                context_key,
-                base_changeset,
-                must_return_records_for_changes?,
-                changes,
-                must_be_simple_results
-              )
-
-            {new_errors, new_error_count} =
-              Process.delete({:bulk_update_errors, tmp_ref}) || {[], 0}
-
-            store_error(ref, new_errors, opts, new_error_count)
-
-            notifications = Process.get({:bulk_update_notifications, tmp_ref}) || []
-            store_notification(ref, notifications, opts)
-
-            result
+            do_handle_batch(
+              batch,
+              domain,
+              resource,
+              action,
+              opts,
+              all_changes,
+              ref,
+              metadata_key,
+              context_key,
+              base_changeset,
+              must_return_records_for_changes?,
+              changes,
+              must_be_simple_results,
+              action_select
+            )
           end,
           opts[:timeout],
           %{
@@ -1646,7 +1780,8 @@ defmodule Ash.Actions.Update.Bulk do
         base_changeset,
         must_return_records_for_changes?,
         changes,
-        must_be_simple_results
+        must_be_simple_results,
+        action_select
       )
     end
   end
@@ -1664,7 +1799,8 @@ defmodule Ash.Actions.Update.Bulk do
          base_changeset,
          must_return_records_for_changes?,
          changes,
-         must_be_simple_results
+         must_be_simple_results,
+         action_select
        ) do
     must_return_records? =
       opts[:notify?] ||
@@ -1693,7 +1829,8 @@ defmodule Ash.Actions.Update.Bulk do
       domain,
       ref,
       metadata_key,
-      context_key
+      context_key,
+      action_select
     )
     |> run_after_action_hooks(opts, domain, ref, metadata_key)
     |> process_results(
@@ -2070,7 +2207,8 @@ defmodule Ash.Actions.Update.Bulk do
          domain,
          ref,
          metadata_key,
-         context_key
+         context_key,
+         action_select
        ) do
     context_struct =
       case context_key do
@@ -2107,7 +2245,7 @@ defmodule Ash.Actions.Update.Bulk do
               :update,
               true
             )
-            |> Ash.Changeset.set_action_select()
+            |> Map.put(:action_select, action_select)
 
           changed? =
             Ash.Changeset.changing_attributes?(changeset) or
@@ -2444,6 +2582,8 @@ defmodule Ash.Actions.Update.Bulk do
            reuse_values?: true,
            domain: domain,
            tenant: opts[:tenant],
+           action:
+             Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
            actor: opts[:actor],
            authorize?: opts[:authorize?],
            tracer: opts[:tracer]
@@ -2454,6 +2594,7 @@ defmodule Ash.Actions.Update.Bulk do
           List.wrap(changeset.load),
           reuse_values?: true,
           tenant: opts[:tenant],
+          action: Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
           domain: domain,
           actor: opts[:actor],
           authorize?: opts[:authorize?],

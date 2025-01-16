@@ -10,6 +10,12 @@ defmodule Ash.Test.ErrorTest do
     def message(_), do: "WHAT"
   end
 
+  defmodule InvalidError do
+    use Splode.Error, fields: [], class: :invalid
+
+    def message(_), do: "WHAT"
+  end
+
   defmodule SpecialError do
     @moduledoc "Used when a flow has been halted for some reason"
     use Splode.Error, fields: [], class: :special
@@ -23,6 +29,10 @@ defmodule Ash.Test.ErrorTest do
     actions do
       default_accept :*
       defaults [:read, :destroy, create: :*, update: :*]
+
+      create :create_with_error do
+        validate attribute_equals(:id, false)
+      end
     end
 
     attributes do
@@ -69,7 +79,7 @@ defmodule Ash.Test.ErrorTest do
 
     test "returns chosen error if the value argument is a list of errors" do
       err1 = Ash.Error.Unknown.UnknownError.exception(error: :an_error, splode: Ash.Error)
-      err2 = Ash.Error.Invalid.exception(errors: [:more, :errors])
+      err2 = InvalidError.exception([])
 
       result = Ash.Error.to_error_class([err1, err2], [])
 
@@ -77,7 +87,7 @@ defmodule Ash.Test.ErrorTest do
       assert match?(%Ash.Error.Invalid{}, result)
 
       # the parent error's errors field gets prepended to the list of other errors
-      assert same_elements?(result.errors, [:more, :errors, err1])
+      assert same_elements?(result.errors, [err1, err2])
     end
 
     test "has a context field populated when there is a single error" do
@@ -147,8 +157,9 @@ defmodule Ash.Test.ErrorTest do
 
       error_message = Ash.Error.Unknown.message(error_class)
 
-      assert error_message =~ "Bread Crumbs: some higher context > some context"
-      assert error_message =~ "Bread Crumbs: some higher context > some other context"
+      assert error_message =~ "  > some higher context"
+      assert error_message =~ "  > some context"
+      assert error_message =~ "  > some other context"
     end
 
     test "error message still renders when there's no error context" do
@@ -187,9 +198,7 @@ defmodule Ash.Test.ErrorTest do
         err.error == "whoops!"
       end)
 
-      Ash.Test.refute_has_error(cs, Ash.Error.Unknown, fn err ->
-        err.error == "yay!"
-      end)
+      Ash.Test.refute_has_error(cs, fn err -> err.error == "yay!" end)
 
       assert clean(Ash.Error.to_error_class(cs)) ==
                clean(Ash.Error.to_error_class([error1, error2], changeset: cs))
@@ -226,6 +235,122 @@ defmodule Ash.Test.ErrorTest do
     end
   end
 
+  describe "assert_has_error" do
+    test "raises if the value is :ok" do
+      assert_raise ExUnit.AssertionError, ~r/it had no errors/, fn ->
+        Ash.Test.assert_has_error(:ok, Ash.Error.Invalid, fn _err -> true end)
+      end
+    end
+
+    test "raises if the value is an :ok tuple" do
+      assert_raise ExUnit.AssertionError, ~r/it had no errors/, fn ->
+        Ash.Test.assert_has_error(
+          {:ok, :something_successful},
+          Ash.Error.Invalid,
+          fn _err -> true end
+        )
+      end
+    end
+
+    test "raises if the value doesn't have any errors of the expected type" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected the changeset to have errors of class Ash.Error.Unknown/,
+                   fn ->
+                     Ash.Test.assert_has_error(changeset, Ash.Error.Unknown, fn _err -> true end)
+                   end
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected the value to have errors of class Ash.Error.Unknown/,
+                   fn ->
+                     Ash.Test.assert_has_error(error, Ash.Error.Unknown, fn _err -> true end)
+                   end
+    end
+
+    test "raises if the value has an error of the expected type but doesn't pass the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected at least one error to match the provided callback/,
+                   fn ->
+                     Ash.Test.assert_has_error(changeset, Ash.Error.Invalid, fn _err -> false end)
+                   end
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected at least one error to match the provided callback/,
+                   fn ->
+                     Ash.Test.assert_has_error(error, Ash.Error.Invalid, fn _err -> false end)
+                   end
+    end
+
+    test "raises if the value doesn't pass the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected at least one error to match the provided callback/,
+                   fn -> Ash.Test.assert_has_error(changeset, fn _err -> false end) end
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected at least one error to match the provided callback/,
+                   fn -> Ash.Test.assert_has_error(error, fn _err -> false end) end
+    end
+
+    test "passes if the value matches the type and passes the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert Ash.Test.assert_has_error(changeset, Ash.Error.Invalid, fn _err -> true end)
+      assert Ash.Test.assert_has_error(error, Ash.Error.Invalid, fn _err -> true end)
+    end
+
+    test "passes if the value passes the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert Ash.Test.assert_has_error(changeset, fn _err -> true end)
+      assert Ash.Test.assert_has_error(error, fn _err -> true end)
+    end
+  end
+
+  describe "refute_has_error" do
+    test "passes if the value is :ok" do
+      Ash.Test.refute_has_error(:ok, fn _err -> true end)
+    end
+
+    test "passes if the value is an :ok tuple" do
+      Ash.Test.refute_has_error({:ok, :something_successful}, fn _err -> true end)
+    end
+
+    test "passes if the value doesn't pass the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      Ash.Test.refute_has_error(changeset, fn _err -> false end)
+      Ash.Test.refute_has_error(error, fn _err -> false end)
+    end
+
+    test "raises if the value passes the callback" do
+      changeset = Ash.Changeset.for_create(TestResource, :create_with_error)
+      error = Ash.create(changeset)
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected no errors to match the provided callback/,
+                   fn ->
+                     Ash.Test.refute_has_error(changeset, fn _err -> true end)
+                   end
+
+      assert_raise ExUnit.AssertionError,
+                   ~r/Expected no errors to match the provided callback/,
+                   fn ->
+                     Ash.Test.refute_has_error(error, fn _err -> true end)
+                   end
+    end
+  end
+
   defp same_elements?(xs, ys) when is_list(xs) and is_list(ys) do
     Enum.sort(clean(xs)) == Enum.sort(clean(ys))
   end
@@ -235,7 +360,7 @@ defmodule Ash.Test.ErrorTest do
   defp clean(list) when is_list(list), do: Enum.map(list, &clean/1)
 
   defp clean(%{stacktrace: _} = value) do
-    %{value | stacktrace: nil}
+    %{value | stacktrace: nil, splode: nil}
   end
 
   defp clean(other), do: other

@@ -1,4 +1,5 @@
 defmodule Ash.Query.Operator.Basic do
+  @moduledoc false
   require Decimal
 
   @operators [
@@ -21,7 +22,18 @@ defmodule Ash.Query.Operator.Basic do
       symbol: :/,
       no_nils: true,
       evaluate_types: :numbers,
-      returns: [:float]
+      types: [
+        [:float, :float],
+        [:decimal, :decimal],
+        [:float, :decimal],
+        [:decimal, :float],
+        [:integer, :integer],
+        [:integer, :float],
+        [:integer, :decimal],
+        [:float, :integer],
+        [:decimal, :integer]
+      ],
+      returns: [:float, :decimal, :decimal, :decimal, :float, :float, :decimal, :float, :decimal]
     ],
     concat: [
       symbol: :<>,

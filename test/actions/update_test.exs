@@ -55,6 +55,30 @@ defmodule Ash.Test.Actions.UpdateTest do
       default_accept :*
       defaults [:read, :destroy, create: :*, update: :*]
 
+      update :check_non_selected_attr do
+        action_select []
+        require_atomic? false
+
+        change fn changeset, _ ->
+          Ash.Changeset.after_action(changeset, fn _changeset, result ->
+            case result.bio do
+              %Ash.NotLoaded{} ->
+                {:ok, result}
+
+              value ->
+                raise "Should have been not loaded: #{inspect(value)}"
+            end
+          end)
+        end
+      end
+
+      update :set_nilable do
+        accept [:nilable]
+        require_atomic? false
+        atomic_upgrade? true
+        require_attributes [:nilable]
+      end
+
       update :set_private_attribute_to_nil do
         accept []
         change set_attribute(:non_nil_private, nil)
@@ -70,6 +94,7 @@ defmodule Ash.Test.Actions.UpdateTest do
       uuid_primary_key :id
       attribute :bio, :string, allow_nil?: false, public?: true
       attribute :non_nil_private, :string, allow_nil?: false, default: "non_nil", public?: true
+      attribute :nilable, :string, public?: true
       attribute :private, :string, default: "non_nil", public?: true
     end
 
@@ -410,6 +435,27 @@ defmodule Ash.Test.Actions.UpdateTest do
     end
   end
 
+  describe "require_attributes" do
+    test "it prevents setting the attribute to `nil`" do
+      profile =
+        Profile
+        |> Ash.Changeset.for_create(:create, %{bio: "foobar"})
+        |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/nilable is required/, fn ->
+        profile
+        |> Ash.Changeset.for_update(:set_nilable, %{nilable: nil})
+        |> Ash.update!()
+      end
+
+      assert_raise Ash.Error.Invalid, ~r/nilable is required/, fn ->
+        profile
+        |> Ash.Changeset.for_update(:set_nilable, %{nilable: nil})
+        |> Ash.update!(atomic_upgrade?: false)
+      end
+    end
+  end
+
   describe "manual updates" do
     test "the update occurs properly" do
       author =
@@ -423,6 +469,20 @@ defmodule Ash.Test.Actions.UpdateTest do
                |> Ash.update!(action: :manual_update)
     end
   end
+
+  # describe "action_select" do
+  #   test "it is applied before hooks are run" do
+  #     profile =
+  #       Profile
+  #       |> Ash.Changeset.for_create(:create, %{bio: "foobar"})
+  #       |> Ash.create!()
+
+  #     profile
+  #     |> Ash.Changeset.for_update(:check_non_selected_attr, %{bio: "bio"})
+  #     |> Ash.Changeset.select([])
+  #     |> Ash.update!()
+  #   end
+  # end
 
   describe "allow_nil?" do
     test "it does not allow updating a value to `nil` when `allow_nil?: false`" do

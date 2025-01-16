@@ -61,7 +61,7 @@ defmodule Ash.Actions.Update do
           !Ash.DataLayer.data_layer_can?(changeset.resource, :update_query) ->
             {{:not_atomic, "data layer does not support updating a query"}, nil}
 
-          !Enum.empty?(changeset.relationships) ->
+          :manage_relationships in changeset.dirty_hooks ->
             {{:not_atomic, "cannot atomically manage relationships"}, nil}
 
           !Enum.empty?(dirty_hooks) ->
@@ -94,6 +94,7 @@ defmodule Ash.Actions.Update do
                   context: changeset.context_changes,
                   notify?: true,
                   data: changeset.data,
+                  no_atomic_constraints: changeset.no_atomic_constraints,
                   atomics:
                     Keyword.merge(
                       changeset.atomic_changes,
@@ -163,6 +164,7 @@ defmodule Ash.Actions.Update do
                    strategy: [:atomic, :stream],
                    resource: atomic_changeset.resource,
                    read_action: atomic_upgrade_read.name,
+                   tenant: atomic_changeset.tenant,
                    authorize_query?: false,
                    return_records?: true,
                    atomic_changeset: atomic_changeset,
@@ -237,6 +239,13 @@ defmodule Ash.Actions.Update do
                                         metadata do
                 case do_run(domain, changeset, action, opts) do
                   {:error, error} ->
+                    error =
+                      Ash.Error.to_error_class(
+                        error,
+                        bread_crumbs:
+                          "Error returned from: #{inspect(changeset.resource)}.#{action.name}"
+                      )
+
                     if opts[:tracer] do
                       stacktrace =
                         case error do
@@ -267,7 +276,13 @@ defmodule Ash.Actions.Update do
     end
   rescue
     e ->
-      reraise Ash.Error.to_error_class(e, changeset: changeset, stacktrace: __STACKTRACE__),
+      reraise Ash.Error.to_error_class(e,
+                changeset: changeset,
+                stacktrace: __STACKTRACE__,
+                bread_crumbs: [
+                  "Exception raised in: #{inspect(changeset.resource)}.#{action.name}"
+                ]
+              ),
               __STACKTRACE__
   end
 
@@ -518,9 +533,21 @@ defmodule Ash.Actions.Update do
                   end
                   |> case do
                     {:ok, result} ->
+                      result =
+                        Helpers.select(result, %{
+                          resource: changeset.resource,
+                          select: changeset.action_select
+                        })
+
                       {:ok, result, %{notifications: manage_instructions.notifications}}
 
                     {:ok, result, notifications} ->
+                      result =
+                        Helpers.select(result, %{
+                          resource: changeset.resource,
+                          select: changeset.action_select
+                        })
+
                       {:ok, result,
                        Map.update!(
                          notifications,
@@ -557,6 +584,7 @@ defmodule Ash.Actions.Update do
         |> Helpers.load(changeset, domain,
           actor: opts[:actor],
           reuse_values?: true,
+          action: Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
           authorize?: opts[:authorize?],
           tracer: opts[:tracer]
         )

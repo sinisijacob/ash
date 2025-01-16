@@ -155,7 +155,7 @@ defmodule Ash.Resource.Change do
             ) ::
               boolean
 
-  @callback atomic(Ash.Changeset.t(), Keyword.t(), Context.t()) ::
+  @callback atomic(changeset :: Ash.Changeset.t(), opts :: Keyword.t(), context :: Context.t()) ::
               {:ok, Ash.Changeset.t()}
               | {:atomic, %{optional(atom()) => Ash.Expr.t() | {:atomic, Ash.Expr.t()}}}
               | {:atomic, Ash.Changeset.t(), %{optional(atom()) => Ash.Expr.t()}}
@@ -308,12 +308,12 @@ defmodule Ash.Resource.Change do
       end
 
       if Module.defines?(__MODULE__, {:atomic, 3}, :def) do
-        unless Module.defines?(__MODULE__, {:atomic?, 0}, :def) do
+        if !Module.defines?(__MODULE__, {:atomic?, 0}, :def) do
           @impl true
           def atomic?, do: true
         end
       else
-        unless Module.defines?(__MODULE__, {:atomic?, 0}, :def) do
+        if !Module.defines?(__MODULE__, {:atomic?, 0}, :def) do
           @impl true
           def atomic?, do: false
         end

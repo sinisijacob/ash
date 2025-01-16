@@ -146,6 +146,16 @@ defmodule Ash.Test.Actions.CreateTest do
         change {DuplicateName, []}
       end
 
+      create :create_with_no_accepts do
+        accept [:bio]
+      end
+
+      create :testing do
+        change fn changeset, _ ->
+          raise "Uh oh!"
+        end
+      end
+
       create :manual_create do
         manual fn _, _ ->
           {:ok,
@@ -160,6 +170,7 @@ defmodule Ash.Test.Actions.CreateTest do
       uuid_primary_key :id
       attribute(:name, :string, public?: true)
       attribute(:bio, :string, public?: true)
+      attribute(:private_name, :string)
     end
 
     relationships do
@@ -277,6 +288,13 @@ defmodule Ash.Test.Actions.CreateTest do
         require_attributes [:tag]
       end
 
+      create :create_with_private_argument do
+        argument :private_name, :string, allow_nil?: false, public?: false
+        accept [:title]
+
+        change set_attribute(:private_name, arg(:private_name))
+      end
+
       create :create_with_nested_array_argument do
         argument :array_of_names, {:array, {:array, :string}}
       end
@@ -308,6 +326,7 @@ defmodule Ash.Test.Actions.CreateTest do
       attribute(:list_attribute, {:array, :integer}, public?: true)
       attribute(:date, :date, public?: true)
       attribute(:binary, :binary, public?: true)
+      attribute(:private_name, :string)
 
       attribute(:required_with_default, :string,
         allow_nil?: false,
@@ -564,6 +583,15 @@ defmodule Ash.Test.Actions.CreateTest do
                |> Ash.create!()
     end
 
+    test "allows setting private arguments" do
+      assert %Post{title: "title"} =
+               Post
+               |> Ash.Changeset.for_create(:create_with_private_argument, %{title: "title"},
+                 private_arguments: %{private_name: "private"}
+               )
+               |> Ash.create!()
+    end
+
     test "allows upserting a record" do
       assert %Post{id: id, title: "foo", updated_at: updated_at} =
                Post
@@ -611,12 +639,40 @@ defmodule Ash.Test.Actions.CreateTest do
                })
                |> Ash.create!(
                  upsert?: true,
+                 return_skipped_upsert?: true,
                  upsert_identity: :unique_title,
                  upsert_fields: [:contents, :updated_at],
                  upsert_condition: expr(contents != upsert_conflict(:contents))
                )
 
       assert Ash.Resource.get_metadata(post, :upsert_skipped)
+    end
+
+    test "skips upsert when condition doesn't match, returning error unless asked for" do
+      Post
+      |> Ash.Changeset.new()
+      |> Ash.Changeset.change_attributes(%{
+        title: "foo",
+        contents: "bar",
+        tag: "before"
+      })
+      |> Ash.create!()
+
+      assert_raise Ash.Error.Invalid, ~r/Stale/, fn ->
+        Post
+        |> Ash.Changeset.new()
+        |> Ash.Changeset.change_attributes(%{
+          title: "foo",
+          contents: "bar",
+          tag: "after"
+        })
+        |> Ash.create!(
+          upsert?: true,
+          upsert_identity: :unique_title,
+          upsert_fields: [:contents, :updated_at],
+          upsert_condition: expr(contents != upsert_conflict(:contents))
+        )
+      end
     end
 
     test "timestamps will match each other" do

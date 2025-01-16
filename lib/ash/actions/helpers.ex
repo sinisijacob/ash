@@ -564,7 +564,7 @@ defmodule Ash.Actions.Helpers do
 
   def apply_opts_load(%Ash.Query{} = query, opts) do
     if opts[:load] do
-      Ash.Query.load(query, opts[:load])
+      Ash.Query.load(query, opts[:load], Keyword.take(opts, [:strict?]))
     else
       query
     end
@@ -577,6 +577,7 @@ defmodule Ash.Actions.Helpers do
       query =
         changeset.resource
         |> Ash.Query.load(changeset.load)
+        |> Ash.Query.set_context(changeset.context)
         |> select_selected(result)
 
       case Ash.load(result, query, Keyword.put(opts, :domain, domain)) do
@@ -596,6 +597,7 @@ defmodule Ash.Actions.Helpers do
       query =
         changeset.resource
         |> Ash.Query.load(changeset.load)
+        |> Ash.Query.set_context(changeset.context)
         |> select_selected(result)
 
       case Ash.load(result, query, Keyword.put(opts, :domain, domain)) do
@@ -778,34 +780,42 @@ defmodule Ash.Actions.Helpers do
     result
   end
 
-  def select(%resource{} = result, %{resource: resource, select: select}) do
-    resource
-    |> Ash.Resource.Info.attributes()
-    |> Enum.flat_map(fn attribute ->
-      if is_nil(select) do
-        attribute.select_by_default?
-      else
-        if attribute.always_select? || attribute.primary_key? || attribute.name in select do
-          []
-        else
-          [attribute.name]
-        end
-      end
-    end)
-    |> Enum.reduce(result, fn key, record ->
-      record
-      |> Map.put(key, %Ash.NotLoaded{field: key, type: :attribute})
-    end)
+  def select(%resource{} = result, %{select: select, resource: resource} = query) do
+    select_mask = select_mask(query)
+
+    result
+    |> Map.merge(select_mask)
     |> Ash.Resource.put_metadata(:selected, select)
   end
 
   def select(:ok, _query), do: :ok
 
-  def select(results, query) do
+  def select(results, %{select: select} = query) do
     if Enumerable.impl_for(results) do
-      Enum.map(results, &select(&1, query))
+      select_mask = select_mask(query)
+
+      Enum.map(results, fn result ->
+        result
+        |> Map.merge(select_mask)
+        |> Ash.Resource.put_metadata(:selected, select)
+      end)
     else
       results
     end
+  end
+
+  defp select_mask(%{select: select, resource: resource}) do
+    resource
+    |> Ash.Resource.Info.attributes()
+    |> Enum.reject(fn attribute ->
+      if is_nil(select) do
+        attribute.select_by_default?
+      else
+        attribute.always_select? || attribute.primary_key? || attribute.name in select
+      end
+    end)
+    |> Map.new(fn attribute ->
+      {attribute.name, %Ash.NotLoaded{field: attribute.name, type: :attribute}}
+    end)
   end
 end

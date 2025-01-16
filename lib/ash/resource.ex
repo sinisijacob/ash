@@ -118,7 +118,7 @@ defmodule Ash.Resource do
           ] do
       @persist {:simple_notifiers, List.wrap(opts[:simple_notifiers])}
 
-      unless embedded? || has_domain? do
+      if !(embedded? || has_domain?) do
         IO.warn("""
         Configuration Error:
 
@@ -398,11 +398,17 @@ defmodule Ash.Resource do
 
   def loaded?(%resource{} = record, [%Ash.Query.Calculation{} = calculation | rest], opts) do
     if calculation.calc_name do
-      resource_calculation = Ash.Resource.Info.calculation(resource, calculation.calc_name)
+      ignored_via_strict? =
+        if opts[:strict?] do
+          resource_calculation = Ash.Resource.Info.calculation(resource, calculation.calc_name)
+          resource_calculation && Enum.any?(resource_calculation.arguments)
+        else
+          false
+        end
 
       # we can't say for sure if the original arguments provided
       # were the same as these, so this is always false
-      if opts[:strict?] && (!resource_calculation || Enum.any?(resource_calculation.arguments)) do
+      if ignored_via_strict? do
         false
       else
         if calculation.load do
@@ -568,20 +574,20 @@ defmodule Ash.Resource do
     get_in(record.__metadata__ || %{}, List.wrap(key_or_path))
   end
 
+  @doc """
+  Returns true if the given field has been selected on a record
+
+  ## Options
+
+  - `forbidden_means_selected?`: set to `true` to return `true` if the field is marked as forbidden
+
+  """
   @spec selected?(Ash.Resource.record(), atom) :: boolean
-  def selected?(%resource{} = record, field) do
-    case get_metadata(record, :selected) do
-      nil ->
-        !!Ash.Resource.Info.attribute(resource, field)
-
-      select ->
-        if field in select do
-          true
-        else
-          attribute = Ash.Resource.Info.attribute(resource, field)
-
-          attribute && attribute.primary_key?
-        end
+  def selected?(record, field, opts \\ []) do
+    case Map.get(record, field) do
+      %Ash.NotLoaded{} -> false
+      %Ash.ForbiddenField{} -> Keyword.get(opts, :forbidden_means_selected?, false)
+      _ -> true
     end
   end
 

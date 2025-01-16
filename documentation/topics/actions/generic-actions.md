@@ -21,12 +21,14 @@ A generic action declares its arguments, return type, and implementation, as ill
 > ```elixir
 > action :schedule_job do
 >   argument :job_name, :string, allow_nil?: false
->   run fn input ->
+>   run fn input, _ ->
 >     # Schedule the job
 >     :ok
 >   end
 > end
 > ```
+
+For a full list of all of the available options for configuring generic actions, see [the Ash.Resource.Dsl documentation](dsl-ash-resource.html#actions-action).
 
 ## Why use generic actions?
 
@@ -78,6 +80,17 @@ end
 >
 >   run # ...
 > end
+> ```
+>
+> For returning many instances of the resource, you can set your action's return type to
+> `{:array, :struct}` and set the `items` constraint to the name of your resource.
+>
+> ```elixir
+>  action :list_resources, {:array, :struct} do
+>    constraints items: [instance_of: __MODULE__]
+>
+>    run # ...
+>  end
 > ```
 
 ## Calling Generic Actions

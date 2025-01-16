@@ -6,7 +6,7 @@ defmodule Ash.MixProject do
   A declarative, extensible framework for building Elixir applications.
   """
 
-  @version "3.4.8"
+  @version "3.4.55"
 
   def project do
     [
@@ -18,8 +18,8 @@ defmodule Ash.MixProject do
       elixirc_paths: elixirc_paths(Mix.env()),
       package: package(),
       deps: deps(),
-      dialyzer: [plt_add_apps: [:mix, :mnesia, :plug, :ex_unit]],
-      docs: docs(),
+      dialyzer: [plt_add_apps: [:mix, :mnesia, :plug, :ex_unit, :stream_data]],
+      docs: &docs/0,
       aliases: aliases(),
       description: @description,
       source_url: "https://github.com/ash-project/ash",
@@ -41,6 +41,13 @@ defmodule Ash.MixProject do
       extra_section: "GUIDES",
       extras: [
         {"README.md", title: "Home"},
+        "documentation/dsls/DSL-Ash.Resource.md",
+        "documentation/dsls/DSL-Ash.Domain.md",
+        "documentation/dsls/DSL-Ash.Notifier.PubSub.md",
+        "documentation/dsls/DSL-Ash.Policy.Authorizer.md",
+        "documentation/dsls/DSL-Ash.DataLayer.Ets.md",
+        "documentation/dsls/DSL-Ash.DataLayer.Mnesia.md",
+        "documentation/dsls/DSL-Ash.Reactor.md",
         "documentation/tutorials/get-started.md",
         "documentation/topics/about_ash/what-is-ash.md",
         "documentation/topics/about_ash/design-principles.md",
@@ -77,23 +84,18 @@ defmodule Ash.MixProject do
         "documentation/topics/development/testing.md",
         "documentation/topics/development/development-utilities.md",
         "documentation/topics/development/upgrading-to-3.0.md",
+        "documentation/moved/upgrade.md",
         "documentation/topics/security/actors-and-authorization.md",
         "documentation/topics/security/sensitive-data.md",
         "documentation/topics/security/policies.md",
         "documentation/topics/reference/glossary.md",
         "documentation/topics/reference/expressions.md",
+        "documentation/how-to/polymorphic-relationships.livemd",
         "documentation/how-to/test-resources.livemd",
         "documentation/how-to/authorize-access-to-resources.livemd",
         "documentation/how-to/encrypt-attributes.livemd",
         "documentation/how-to/prevent-concurrent-writes.livemd",
         "documentation/how-to/wrap-external-apis.livemd",
-        "documentation/dsls/DSL:-Ash.Resource.md",
-        "documentation/dsls/DSL:-Ash.Domain.md",
-        "documentation/dsls/DSL:-Ash.Notifier.PubSub.md",
-        "documentation/dsls/DSL:-Ash.Policy.Authorizer.md",
-        "documentation/dsls/DSL:-Ash.DataLayer.Ets.md",
-        "documentation/dsls/DSL:-Ash.DataLayer.Mnesia.md",
-        "documentation/dsls/DSL:-Ash.Reactor.md",
         "CHANGELOG.md"
       ],
       groups_for_extras: [
@@ -106,15 +108,18 @@ defmodule Ash.MixProject do
           ~r"documentation/topics/about_ash",
           "CHANGELOG.md"
         ],
+        Reference: [
+          ~r"documentation/topics/reference",
+          ~r"documentation/dsls"
+        ],
         Resources: ~r"documentation/topics/resources",
         Actions: ~r"documentation/topics/actions",
         Security: ~r"documentation/topics/security",
         Development: ~r"documentation/topics/development",
         Advanced: ~r"documentation/topics/advanced",
         "How To": ~r"documentation/how-to",
-        Reference: [
-          ~r"documentation/topics/reference",
-          ~r"documentation/dsls"
+        Moved: [
+          ~r"documentation/moved"
         ]
       ],
       skip_undefined_reference_warnings_on: [
@@ -140,6 +145,9 @@ defmodule Ash.MixProject do
           """
           <style>
             .livebook-badge-container + pre {
+              display: none;
+            }
+            .livebook-badge-container + pre + pre {
               display: none;
             }
           </style>
@@ -315,6 +323,7 @@ defmodule Ash.MixProject do
     [
       name: :ash,
       licenses: ["MIT"],
+      maintainers: ["Zach Daniel"],
       files: ~w(lib .formatter.exs mix.exs README* LICENSE*
       CHANGELOG* documentation),
       links: %{
@@ -336,7 +345,7 @@ defmodule Ash.MixProject do
   defp deps do
     [
       # DSLs
-      {:spark, "~> 2.1 and >= 2.2.22"},
+      {:spark, "~> 2.1 and >= 2.2.29"},
       # Ash resources are backed by ecto scheams
       {:ecto, "~> 3.7"},
       # Used by the ETS data layer
@@ -351,7 +360,7 @@ defmodule Ash.MixProject do
       # Used for Ash.PlugHelpers
       {:plug, ">= 0.0.0", optional: true},
       # Used for aggregatable and standardized exceptions
-      {:splode, "~> 0.2"},
+      {:splode, "~> 0.2 and >= 0.2.6"},
       # Testing Utilities
       {:stream_data, "~> 1.0"},
 
@@ -360,7 +369,7 @@ defmodule Ash.MixProject do
       {:simple_sat, "~> 0.1 and >= 0.1.1", optional: true},
 
       # Code Generators
-      {:igniter, "~> 0.3 and >= 0.3.35"},
+      {:igniter, "~> 0.4 and >= 0.4.8", optional: true},
 
       # IO Utilities
       {:owl, "~> 0.11"},
@@ -391,6 +400,7 @@ defmodule Ash.MixProject do
         "spark.replace_doc_links",
         "spark.cheat_sheets_in_search"
       ],
+      format: "format --migrate",
       "spark.cheat_sheets_in_search":
         "spark.cheat_sheets_in_search --extensions Ash.Resource.Dsl,Ash.Domain.Dsl,Ash.DataLayer.Ets,Ash.DataLayer.Mnesia,Ash.Notifier.PubSub,Ash.Policy.Authorizer,Ash.Reactor",
       "spark.formatter":

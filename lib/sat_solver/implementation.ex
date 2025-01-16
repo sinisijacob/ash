@@ -2,30 +2,38 @@ cond do
   Application.compile_env(:ash, :sat_testing) ->
     defmodule Ash.SatSolver.Implementation do
       @moduledoc false
+
+      @doc false
       def solve_expression(cnf) do
         Module.concat([System.get_env("SAT_SOLVER") || "Picosat"]).solve(cnf)
       end
 
+      @doc false
       def check!, do: :ok
     end
 
   Code.ensure_loaded?(Picosat) ->
     defmodule Ash.SatSolver.Implementation do
       @moduledoc false
+
+      @doc false
       def solve_expression(cnf) do
         Picosat.solve(cnf)
       end
 
+      @doc false
       def check!, do: :ok
     end
 
   Code.ensure_loaded?(SimpleSat) ->
     defmodule Ash.SatSolver.Implementation do
       @moduledoc false
+      @doc false
       def solve_expression(cnf) do
         SimpleSat.solve(cnf)
       end
 
+      @doc false
       def check!, do: :ok
     end
 
@@ -38,6 +46,7 @@ cond do
         :ok
       end
 
+      @doc false
       def check! do
         if Code.ensure_loaded?(Picosat) || Code.ensure_loaded?(SimpleSat) do
           raise """
@@ -45,7 +54,7 @@ cond do
 
           This typically means that you need to run `mix deps.compile ash --force`
 
-          If that doesn't work, please ensure that one of the following dependencies is present in your application to use sat solver features:
+          If that doesn't work, please ensure that one of the following dependencies is present in your application to use SAT solver features:
 
           * `:picosat_elixir` (recommended) - A NIF wrapper around the PicoSAT SAT solver. Fast, production ready, battle tested.
           * `:simple_sat` - A pure Elixir SAT solver. Slower than PicoSAT, but no NIF dependency.
@@ -55,7 +64,7 @@ cond do
         raise """
         No SAT solver available.
 
-        Please add one of the following dependencies to your application to use sat solver features:
+        Please add one of the following dependencies to your application to use SAT solver features:
 
         * `:picosat_elixir` (recommended) - A NIF wrapper around the PicoSAT SAT solver. Fast, production ready, battle tested.
         * `:simple_sat` - A pure Elixir SAT solver. Slower than PicoSAT, but no NIF dependency.

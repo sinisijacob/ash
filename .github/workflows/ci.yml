@@ -6,6 +6,8 @@ on:
     branches: [main, "3.0"]
   pull_request:
     branches: [main, "3.0"]
+  workflow_dispatch:
+
 jobs:
   ash-ci:
     strategy:
@@ -16,3 +18,4 @@ jobs:
       HEX_API_KEY: ${{ secrets.HEX_API_KEY }}
     with:
       sat-solver: ${{ matrix.sat_solver }}
+      igniter-upgrade: ${{matrix.sat_solver == 'SimpleSat'}}

@@ -47,7 +47,18 @@ defmodule Ash.Policy.Check.Builtins do
   """
   @spec action_type(Ash.Resource.Actions.action_type()) :: Ash.Policy.Check.ref()
   def action_type(action_type) do
+    Enum.each(List.wrap(action_type), fn type ->
+      if type not in [:create, :read, :update, :destroy, :action] do
+        raise ArgumentError, "Invalid action type: #{inspect(type)}"
+      end
+    end)
+
     {Ash.Policy.Check.ActionType, type: List.wrap(action_type)}
+  end
+
+  @spec just_created_with_action(atom()) :: Ash.Policy.Check.ref()
+  def just_created_with_action(action_name) do
+    {Ash.Policy.Check.ContextEquals, key: [:private, :just_created_by_action], value: action_name}
   end
 
   @doc """
@@ -74,6 +85,14 @@ defmodule Ash.Policy.Check.Builtins do
   @spec actor_present() :: Ash.Policy.Check.ref()
   def actor_present do
     Ash.Policy.Check.ActorPresent
+  end
+
+  @doc """
+  This check is false when there is an actor specified, and true when the actor is `nil`.
+  """
+  @spec actor_absent() :: Ash.Policy.Check.ref()
+  def actor_absent do
+    Ash.Policy.Check.ActorAbsent
   end
 
   @doc """
@@ -216,6 +235,20 @@ defmodule Ash.Policy.Check.Builtins do
 
   @doc """
   This check is true when the value of the specified key or path in the changeset or query context equals the specified value.
+
+  Note that the context is not shared with other queries (e.g. loads).
+
+  For example:
+  ```elixir
+  # Given this check on Profile
+  authorize_if context_equals(:allow_this?, true)
+
+  # This load will not have the context and will not be authorized
+  Ash.load!(user, :profile, context: %{allow_this?: true})
+
+  # But this will have the context and will be authorized
+  Ash.load!(user, [profile: Ash.Query.set_context(Profile, %{allow_this?: true})])
+  ```
   """
   def context_equals(key, value) do
     {Ash.Policy.Check.ContextEquals, key: key, value: value}

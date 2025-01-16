@@ -122,69 +122,70 @@ defmodule Ash.Actions.Destroy.Bulk do
 
     case fully_atomic_changeset do
       {:not_atomic, reason} ->
-        case Ash.Actions.Read.Stream.stream_strategy(
-               query,
-               nil,
-               opts[:allow_stream_with] || :keyset
-             ) do
-          {:error, %Ash.Error.Invalid.NonStreamableAction{} = exception} ->
-            %Ash.BulkResult{
-              status: :error,
-              error_count: 1,
-              errors: [
-                Ash.Error.to_error_class(
-                  Ash.Error.Invalid.NoMatchingBulkStrategy.exception(
-                    resource: query.resource,
-                    action: query.action.name,
-                    requested_strategies: opts[:strategy],
-                    not_stream_reason: "could not stream the query",
-                    footer: "Non stream reason:\n\n" <> Exception.message(exception)
-                  )
-                )
-              ]
-            }
-
-          _ ->
-            read_opts =
-              opts
-              |> then(fn read_opts ->
-                if opts[:batch_size] do
-                  Keyword.put(read_opts, :batch_size, opts[:stream_batch_size])
-                else
-                  read_opts
-                end
-              end)
-              |> Keyword.put(:authorize?, opts[:authorize?] && opts[:authorize_query?])
-              |> Keyword.put(:domain, domain)
-
-            query =
-              Ash.Query.do_filter(query, opts[:filter])
-
-            if query.limit && query.limit < (opts[:batch_size] || 100) do
-              read_opts = Keyword.take(read_opts, Keyword.keys(Ash.read_opts()))
-
-              case Ash.Actions.Read.unpaginated_read(query, query.action, read_opts) do
-                {:ok, results} ->
-                  run(
-                    domain,
-                    results,
-                    action,
-                    input,
-                    Keyword.merge(opts,
-                      resource: query.resource,
-                      input_was_stream?: false
-                    ),
-                    reason
-                  )
-
-                {:error, error} ->
-                  %Ash.BulkResult{
-                    status: :error,
-                    error_count: 1,
-                    errors: [Ash.Error.to_error_class(error)]
-                  }
-              end
+        read_opts =
+          opts
+          |> then(fn read_opts ->
+            if opts[:batch_size] do
+              Keyword.put(read_opts, :batch_size, opts[:stream_batch_size])
             else
+              read_opts
+            end
+          end)
+          |> Keyword.put(:authorize?, opts[:authorize?] && opts[:authorize_query?])
+          |> Keyword.put(:domain, domain)
+          |> Keyword.delete(:load)
+
+        query =
+          Ash.Query.do_filter(query, opts[:filter])
+
+        if query.limit && query.limit < (opts[:batch_size] || 100) do
+          read_opts = Keyword.take(read_opts, Keyword.keys(Ash.read_opts()))
+
+          case Ash.Actions.Read.unpaginated_read(query, query.action, read_opts) do
+            {:ok, results} ->
+              run(
+                domain,
+                results,
+                action,
+                input,
+                Keyword.merge(opts,
+                  resource: query.resource,
+                  input_was_stream?: false
+                ),
+                reason
+              )
+
+            {:error, error} ->
+              %Ash.BulkResult{
+                status: :error,
+                error_count: 1,
+                errors: [Ash.Error.to_error_class(error)]
+              }
+          end
+        else
+          case Ash.Actions.Read.Stream.stream_strategy(
+                 query,
+                 nil,
+                 opts[:allow_stream_with] || :keyset
+               ) do
+            {:error, %Ash.Error.Invalid.NonStreamableAction{} = exception} ->
+              %Ash.BulkResult{
+                status: :error,
+                error_count: 1,
+                errors: [
+                  Ash.Error.to_error_class(
+                    Ash.Error.Invalid.NoMatchingBulkStrategy.exception(
+                      resource: query.resource,
+                      action: query.action.name,
+                      requested_strategies: opts[:strategy],
+                      not_stream_reason: "could not stream the query",
+                      footer: "Non stream reason:\n\n" <> Exception.message(exception)
+                    )
+                  )
+                ]
+              }
+
+            _ ->
               read_opts = Keyword.take(read_opts, Ash.stream_opt_keys())
 
               # We need to figure out a way to capture errors raised by the stream when picking items off somehow
@@ -207,7 +208,7 @@ defmodule Ash.Actions.Destroy.Bulk do
                 ),
                 reason
               )
-            end
+          end
         end
 
       %Ash.Changeset{valid?: false, errors: errors} ->
@@ -536,11 +537,32 @@ defmodule Ash.Actions.Destroy.Bulk do
         opts
       )
 
+    action_select =
+      if Ash.DataLayer.data_layer_can?(atomic_changeset.resource, :action_select) do
+        Enum.uniq(
+          Enum.concat(
+            Ash.Resource.Info.action_select(atomic_changeset.resource, atomic_changeset.action),
+            List.wrap(
+              opts[:select] ||
+                MapSet.to_list(
+                  Ash.Resource.Info.selected_by_default_attribute_names(atomic_changeset.resource)
+                )
+            )
+          )
+        )
+      else
+        MapSet.to_list(Ash.Resource.Info.attribute_names(atomic_changeset.resource))
+      end
+
     destroy_query_opts =
       opts
       |> Keyword.take([:return_records?, :tenant, :select])
       |> Map.new()
       |> Map.put(:calculations, calculations)
+      |> Map.put(
+        :action_select,
+        action_select
+      )
 
     with {:ok, query} <-
            authorize_bulk_query(query, atomic_changeset, opts),
@@ -669,7 +691,13 @@ defmodule Ash.Actions.Destroy.Bulk do
             status: :error,
             error_count: 1,
             notifications: [],
-            errors: [Ash.Error.to_error_class(error)]
+            errors: [
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query destroy: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            ]
           }
 
         {:error,
@@ -690,7 +718,13 @@ defmodule Ash.Actions.Destroy.Bulk do
               status: :error,
               error_count: 1,
               notifications: [],
-              errors: [Ash.Error.to_error_class(error)]
+              errors: [
+                Ash.Error.to_error_class(error,
+                  bread_crumbs: [
+                    "Returned from bulk query destroy: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                  ]
+                )
+              ]
             }
           end
 
@@ -699,7 +733,13 @@ defmodule Ash.Actions.Destroy.Bulk do
             status: :error,
             error_count: 1,
             notifications: [],
-            errors: [Ash.Error.to_error_class(error)]
+            errors: [
+              Ash.Error.to_error_class(error,
+                bread_crumbs: [
+                  "Returned from bulk query destroy: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                ]
+              )
+            ]
           }
 
         {:error, error} ->
@@ -710,7 +750,13 @@ defmodule Ash.Actions.Destroy.Bulk do
               status: :error,
               error_count: 1,
               notifications: [],
-              errors: [Ash.Error.to_error_class(error)]
+              errors: [
+                Ash.Error.to_error_class(error,
+                  bread_crumbs: [
+                    "Returned from bulk query destroy: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+                  ]
+                )
+              ]
             }
           end
       end
@@ -755,7 +801,13 @@ defmodule Ash.Actions.Destroy.Bulk do
         %Ash.BulkResult{
           status: :error,
           error_count: 1,
-          errors: [Ash.Error.to_error_class(error)]
+          errors: [
+            Ash.Error.to_error_class(error,
+              bread_crumbs: [
+                "Returned from bulk query destroy: #{inspect(atomic_changeset.resource)}.#{atomic_changeset.action.name}"
+              ]
+            )
+          ]
         }
     end
   end
@@ -967,7 +1019,7 @@ defmodule Ash.Actions.Destroy.Bulk do
         end)
       end
     )
-    |> run_batches(ref, opts)
+    |> run_batches(ref, atomic_changeset.resource, atomic_changeset.action.name, opts)
   end
 
   defp do_stream_batches(domain, stream, action, input, opts) do
@@ -1026,10 +1078,10 @@ defmodule Ash.Actions.Destroy.Bulk do
         end
       end
     )
-    |> run_batches(ref, opts)
+    |> run_batches(ref, resource, action.name, opts)
   end
 
-  defp run_batches(changeset_stream, ref, opts) do
+  defp run_batches(changeset_stream, ref, resource, action_name, opts) do
     if opts[:return_stream?] do
       Stream.concat(changeset_stream)
     else
@@ -1062,6 +1114,16 @@ defmodule Ash.Actions.Destroy.Bulk do
           end
 
         {errors, error_count} = Process.get({:bulk_destroy_errors, ref}) || {[], 0}
+
+        errors =
+          Enum.map(
+            errors,
+            &Ash.Error.to_ash_error(&1, [],
+              bread_crumbs: [
+                "Returned from bulk destroy: #{inspect(resource)}.#{action_name}"
+              ]
+            )
+          )
 
         bulk_result = %Ash.BulkResult{
           records: records,
@@ -1292,7 +1354,8 @@ defmodule Ash.Actions.Destroy.Bulk do
 
     {batch, must_be_simple} =
       Enum.reduce(batch, {[], []}, fn changeset, {batch, must_be_simple} ->
-        if changeset.after_transaction in [[], nil] do
+        if changeset.around_transaction in [[], nil] and changeset.after_transaction in [[], nil] and
+             changeset.around_action in [[], nil] do
           changeset = Ash.Changeset.run_before_transaction_hooks(changeset)
           {[changeset | batch], must_be_simple}
         else
@@ -1315,6 +1378,24 @@ defmodule Ash.Actions.Destroy.Bulk do
 
           {:ok, result} when not is_list(result) ->
             Process.put({:any_success?, ref}, true)
+
+            [
+              Ash.Resource.set_metadata(result, %{
+                bulk_destroy_index: changeset.context.bulk_destroy.index
+              })
+            ]
+
+          {:ok, notifications} ->
+            Process.put({:any_success?, ref}, true)
+
+            store_notification(ref, notifications, opts)
+
+            []
+
+          {:ok, result, notifications} ->
+            Process.put({:any_success?, ref}, true)
+
+            store_notification(ref, notifications, opts)
 
             [
               Ash.Resource.set_metadata(result, %{
@@ -2116,6 +2197,8 @@ defmodule Ash.Actions.Destroy.Bulk do
            reuse_values?: true,
            domain: domain,
            tenant: opts[:tenant],
+           action:
+             Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
            actor: opts[:actor],
            authorize?: opts[:authorize?],
            tracer: opts[:tracer]
@@ -2126,6 +2209,7 @@ defmodule Ash.Actions.Destroy.Bulk do
           List.wrap(changeset.load),
           reuse_values?: true,
           tenant: opts[:tenant],
+          action: Ash.Resource.Info.primary_action(changeset.resource, :read) || changeset.action,
           domain: domain,
           actor: opts[:actor],
           authorize?: opts[:authorize?],

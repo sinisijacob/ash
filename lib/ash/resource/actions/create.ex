@@ -11,13 +11,14 @@ defmodule Ash.Resource.Actions.Create do
     manual: nil,
     notifiers: [],
     touches_resources: [],
-    action_select: [],
+    action_select: nil,
     delay_global_validations?: false,
     skip_global_validations?: false,
     skip_unknown_inputs: [],
     upsert?: false,
     upsert_identity: nil,
     upsert_fields: nil,
+    return_skipped_upsert?: false,
     upsert_condition: nil,
     arguments: [],
     changes: [],
@@ -33,10 +34,11 @@ defmodule Ash.Resource.Actions.Create do
           accept: nil | list(atom),
           require_attributes: list(atom),
           allow_nil_input: list(atom),
-          action_select: list(atom),
+          action_select: list(atom) | nil,
           manual: module | nil,
           upsert?: boolean,
           skip_unknown_inputs: list(atom | String.t()),
+          return_skipped_upsert?: boolean(),
           notifiers: [module()],
           delay_global_validations?: boolean,
           skip_global_validations?: boolean,
@@ -98,6 +100,11 @@ defmodule Ash.Resource.Actions.Create do
                   type: :any,
                   doc:
                     "An expression to check if the record should be updated when there's a conflict."
+                ],
+                return_skipped_upsert?: [
+                  type: :boolean,
+                  doc:
+                    "Returns the record that would have been upserted against but was skipped due to a filter or no fields being changed. How this works depends on the data layer. Keep in mind that read policies *are not applied* to the read of the record in question."
                 ]
               ]
               |> Spark.Options.merge(

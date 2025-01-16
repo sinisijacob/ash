@@ -27,6 +27,14 @@ defmodule Ash.Test.QueryTest do
 
         filter expr(id == ^arg(:id))
       end
+
+      read :list_by_name_substring do
+        argument :name_substring, :string do
+          constraints min_length: 4
+        end
+
+        filter expr(contains(name, ^arg(:name_substring)))
+      end
     end
 
     attributes do
@@ -52,6 +60,13 @@ defmodule Ash.Test.QueryTest do
     test "it returns an appropriate error when an argument is invalid" do
       query = Ash.Query.for_read(User, :by_id, %{id: "foobar"})
       assert [%Ash.Error.Query.InvalidArgument{field: :id}] = query.errors
+    end
+
+    test "it returns an appropriate error when an argument constraint is violated" do
+      query = Ash.Query.for_read(User, :list_by_name_substring, %{name_substring: "foo"})
+
+      assert [%Ash.Error.Query.InvalidArgument{field: :name_substring, vars: [min: 4]}] =
+               query.errors
     end
   end
 
@@ -95,6 +110,14 @@ defmodule Ash.Test.QueryTest do
       assert User
              |> Ash.Query.filter(list: list)
              |> Ash.read_one!()
+    end
+  end
+
+  describe "action validation" do
+    test "it fails when the action requested doesn't exist on the resource" do
+      assert_raise(ArgumentError, ~r/no such read action/i, fn ->
+        Ash.Query.for_read(User, :bananas)
+      end)
     end
   end
 end

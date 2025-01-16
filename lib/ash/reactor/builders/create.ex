@@ -11,8 +11,7 @@ defimpl Reactor.Dsl.Build, for: Ash.Reactor.Dsl.Create do
   @doc false
   @impl true
   def build(create, reactor) do
-    with {:ok, reactor} <- ensure_hooked(reactor),
-         {:ok, reactor, arguments} <- build_input_arguments(reactor, create) do
+    with {:ok, reactor, arguments} <- build_input_arguments(reactor, create) do
       initial =
         case create.initial do
           nil ->
@@ -30,6 +29,7 @@ defimpl Reactor.Dsl.Build, for: Ash.Reactor.Dsl.Create do
         |> maybe_append(create.actor)
         |> maybe_append(create.tenant)
         |> maybe_append(create.load)
+        |> maybe_append(create.context)
         |> Enum.concat(create.wait_for)
         |> Enum.concat([initial])
 

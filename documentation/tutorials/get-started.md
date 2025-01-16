@@ -65,7 +65,7 @@ If you already know that you want to use Phoenix and Ash together, you can use
 mix archive.install hex phx_new
 
 # use the `--with` flag to generate the project with phx.new and add Ash
-mix igniter.new helpdesk --install ash --with phx.new && cd helpdesk
+mix igniter.new helpdesk --install ash,ash_phoenix --with phx.new && cd helpdesk
 ```
 
 It is a good idea to make it a git repository and commit the initial project. You'll be able to see what changes we made, and can save your changes once we're done.
@@ -91,7 +91,7 @@ Open the project in your text editor, and we'll get started.
 > Already know you want to use `AshPostgres`? Use the `--extend` argument.
 >
 > ```bash
-> mix igniter.new helpdesk --install ash,ash_postgres --example --extend postgres`
+> mix igniter.new helpdesk --install ash,ash_postgres --example --extend postgres
 > ```
 >
 > Want to start with a Phoenix app setup too? Use the `--with` argument.
@@ -100,13 +100,14 @@ Open the project in your text editor, and we'll get started.
 > mix archive.install hex phx_new
 >
 > mix igniter.new helpdesk \
->   --install ash,ash_postgres \
+>   --install ash,ash_postgres,ash_phoenix \
 >   --with phx.new \
 >   --extend postgres \
 >   --example
 > ```
 >
-> If you generate this code, you can browse the rest of the guide, but the code shown will already be present in your application 🥳
+> Afterwards change the active directory to the newly created folder `helpdesk`, edit `devs.exs` to reflect your database credentials and run ```mix ash.setup``` which will setup your postgres database.
+> If you like you can now browse the rest of the guide, but the code shown will already be present in your application 🥳
 
 ### Using Mix
 
@@ -173,6 +174,13 @@ And run `mix deps.get`, to install the dependency.
 The basic building blocks of an Ash application are Ash resources. They are tied together by a domain module, which will allow you to interact with those resources.
 
 ### Creating our first resource
+
+> ### Generators {: .info}
+>
+> We have CLI commands that will do this for you, for example `mix ash.gen.resource`
+> In this getting started guide, we will create the resources by hand. This is primarily
+> because there are not actually very many steps, and we want you to be familiar with
+> each moving piece. For more on the generators, run `mix help ash.gen.resource`.
 
 Let's start by creating our first resource along with our first domain. We will create the following files:
 
@@ -420,6 +428,47 @@ ticket
 >
 ```
 
+What if we would try to close the ticket again?
+
+```elixir
+ticket
+|> Ash.Changeset.for_update(:close)
+|> Ash.update!()
+```
+
+The application would halt with an error:
+
+```text
+...
+** (Ash.Error.Invalid)
+Bread Crumbs:
+  > Returned from bulk query update: Helpdesk.Support.Ticket.close
+
+Invalid Error
+
+* Invalid value provided for status: Ticket is already closed.
+...
+```
+Note the 'Ticket is already closed' message that we have defined in the ```attribute_does_not_equal``` validation.
+
+And if we'd use the non-bang version:
+
+```elixir
+ticket
+|> Ash.Changeset.for_update(:close)
+|> Ash.update()
+```
+we get an error tuple with a %Ash.Error.Invalid struct that contains the message:
+
+```text
+{:error,
+ %Ash.Error.Invalid{
+...
+       message: "Ticket is already closed",
+...
+```
+
+
 ### Querying without persistence
 
 So far we haven't used a data layer that does any persistence, like storing records in a database. All that this simple resource does is return the record back to us. You can see this lack of persistence by attempting to use a `read` action:
@@ -665,13 +714,17 @@ Where Ash shines however, is all of the tools that can work _with_ your resource
 
 #### Persist your data
 
-See [The AshPostgres getting started guide](https://hexdocs.pm/ash_postgres) to see how to back your resources with Postgres. This is highly recommended, as the Postgres data layer provides tons of advanced capabilities.
+See [The AshPostgres getting started guide](https://hexdocs.pm/ash_postgres) to see how to back your resources with Postgres.
+This is highly recommended, as the Postgres data layer provides tons of advanced capabilities.
 
 #### Add a web API
 
 Check out [AshJsonApi](https://hexdocs.pm/ash_json_api) and [AshGraphql](https://hexdocs.pm/ash_graphql) extensions to build APIs around your resource
 
 #### Authorize access and work with users
+
+See [AshAuthentication](https://hexdocs.pm/ash_authentication) for setting up users and allowing them to
+log in. It supports password, magic link, oauth (google, github, apple etc.) out of the box!
 
 See the [Policies guide](/documentation/topics/security/policies.md) for information on how to authorize access to your resources using actors and policies.
 

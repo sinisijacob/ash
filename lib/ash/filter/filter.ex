@@ -33,6 +33,7 @@ defmodule Ash.Filter do
     Minus,
     Now,
     Round,
+    StartOfDay,
     StringDowncase,
     StringJoin,
     StringLength,
@@ -78,6 +79,7 @@ defmodule Ash.Filter do
     Round,
     Today,
     Type,
+    StartOfDay,
     StringDowncase,
     StringJoin,
     StringLength,
@@ -116,12 +118,10 @@ defmodule Ash.Filter do
 
   ## Security Concerns
 
-  If you are using a map with string keys, it is likely that you are parsing
-  input. It is important to note that, instead of passing a filter supplied from
-  an external source directly to `Ash.Query.filter/2`, you should call
-  `Ash.Filter.parse_input/2`.  This ensures that the filter only uses public
-  attributes, relationships, aggregates and calculations, honors field policies
-  and any policies on related resources.
+  Do not pass user input directly to `Ash.Query.filter/2`, it will not be sanitised. Instead use
+  `Ash.Filter.parse_input/2` or `Ash.Query.filter_input/2`.
+
+  Refer to those functions for more information on how to safely work with user input.
 
   ## Writing a filter
 
@@ -471,6 +471,18 @@ defmodule Ash.Filter do
         end
 
       {fields, value} ->
+        multitenancy_attribute = Ash.Resource.Info.multitenancy_attribute(resource)
+        fields = Enum.reject(fields, fn key -> key == multitenancy_attribute end)
+
+        {keyval?, value} =
+          case fields do
+            [field] when not keyval? ->
+              {true, [{field, value}]}
+
+            _ ->
+              {keyval?, value}
+          end
+
         if keyval? do
           with :error <- get_keys(value, fields, resource),
                :error <- get_identity_filter(resource, id) do
@@ -607,8 +619,7 @@ defmodule Ash.Filter do
   @doc """
   Can be used to find a simple equality predicate on an attribute
 
-  Use this when your attribute is configured with `filterable? :simple_equality`, and you want to
-  to find the value that it is being filtered on with (if any).
+  Prefer `fetch_simple_equality_predicate/2`.
   """
   def find_simple_equality_predicate(expression, attribute) do
     expression
@@ -620,6 +631,29 @@ defmodule Ash.Filter do
       %{right: right, left: left} ->
         Enum.find([right, left], fn value ->
           !Ash.Expr.expr?(value)
+        end)
+    end
+  end
+
+  @doc """
+  Can be used to find a simple equality predicate on an attribute
+
+  Use this when your attribute is configured with `filterable? :simple_equality`, and you want to
+  to find the value that it is being filtered on with (if any).
+  """
+  @spec fetch_simple_equality_predicate(Ash.Expr.t(), atom()) :: {:ok, term()} | :error
+  def fetch_simple_equality_predicate(expression, attribute) do
+    expression
+    |> find(&simple_eq?(&1, attribute), false)
+    |> case do
+      nil ->
+        :error
+
+      %{right: right, left: left} ->
+        Enum.find_value([right, left], :error, fn value ->
+          if !Ash.Expr.expr?(value) do
+            {:ok, value}
+          end
         end)
     end
   end
@@ -965,6 +999,7 @@ defmodule Ash.Filter do
             }
           })
           |> Ash.Query.select([])
+          |> Map.put(:filter, nil)
           |> Ash.can(actor,
             run_queries?: false,
             pre_flight?: false,
@@ -975,21 +1010,28 @@ defmodule Ash.Filter do
           )
           |> case do
             {:ok, true, authorized_related_query} ->
+              related_filter =
+                if is_nil(authorized_related_query.filter) do
+                  %Ash.Filter{expression: true, resource: related_query.resource}
+                else
+                  authorized_related_query.filter
+                end
+
               {:cont,
                {:ok,
                 Map.put(
                   filters,
                   {last_relationship.source, last_relationship.name, related_query.action.name},
-                  authorized_related_query.filter
+                  related_filter
                 )}}
 
             {:ok, false, _error} ->
-              {:halt,
+              {:cont,
                {:ok,
                 Map.put(
                   filters,
                   {last_relationship.source, last_relationship.name, related_query.action.name},
-                  false
+                  %Ash.Filter{expression: false, resource: related_query.resource}
                 )}}
 
             {:error, error} ->
@@ -2079,7 +2121,9 @@ defmodule Ash.Filter do
 
     with %{valid?: true} = aggregate_query <- Ash.Query.for_read(related, read_action),
          %{valid?: true} = aggregate_query <-
-           Ash.Query.Aggregate.build_query(aggregate_query,
+           Ash.Query.Aggregate.build_query(
+             aggregate_query,
+             resource,
              filter: aggregate.filter,
              sort: aggregate.sort
            ) do
@@ -2087,6 +2131,7 @@ defmodule Ash.Filter do
              resource,
              aggregate.name,
              aggregate.kind,
+             agg_name: aggregate.name,
              path: aggregate.relationship_path,
              query: aggregate_query,
              field: aggregate.field,
@@ -2115,19 +2160,7 @@ defmodule Ash.Filter do
   end
 
   defp field_to_ref(resource, %Ash.Resource.Calculation{} = calc) do
-    {module, opts} = calc.calculation
-
-    case Calculation.new(
-           calc.name,
-           module,
-           opts,
-           calc.type,
-           calc.constraints,
-           async?: calc.async?,
-           filterable?: calc.filterable?,
-           sortable?: calc.sortable?,
-           sensitive?: calc.sensitive?
-         ) do
+    case Calculation.from_resource_calculation(resource, calc) do
       {:ok, calc} ->
         calc = %{calc | load: calc.name}
         field_to_ref(resource, calc)
@@ -2378,15 +2411,6 @@ defmodule Ash.Filter do
 
   defp expand_get_path_refs(ref, path, expand_calculations?) do
     if is_list(path) && Enum.all?(path, &(is_atom(&1) || is_binary(&1))) do
-      path =
-        Enum.map(path, fn item ->
-          if is_binary(item) do
-            String.to_existing_atom(item)
-          else
-            item
-          end
-        end)
-
       attribute = List.last(path)
       path = :lists.droplast(path)
 
@@ -2665,24 +2689,13 @@ defmodule Ash.Filter do
             add_expression_part({function, [args]}, context, expression)
 
           resource_calculation when tuple_size(args) == 2 ->
-            {module, opts} = resource_calculation.calculation
             {args, nested_statement} = args
 
             with {:ok, args} <-
                    Ash.Query.validate_calculation_arguments(resource_calculation, args || %{}),
                  {:ok, calculation} <-
-                   Calculation.new(
-                     resource_calculation.name,
-                     module,
-                     opts,
-                     resource_calculation.type,
-                     resource_calculation.constraints,
-                     arguments: args,
-                     async?: resource_calculation.async?,
-                     filterable?: resource_calculation.filterable?,
-                     sortable?: resource_calculation.sortable?,
-                     sensitive?: resource_calculation.sensitive?,
-                     load: resource_calculation.load
+                   Calculation.from_resource_calculation(context.resource, resource_calculation,
+                     args: args
                    ) do
               calculation = %{calculation | load: calculation.name}
 
@@ -2706,11 +2719,11 @@ defmodule Ash.Filter do
              refs <- list_refs(args),
              :ok <- validate_refs(refs, context.root_resource, {function, nested_statement}),
              {:ok, function} <- Function.new(function_module, args) do
-          if is_nil(context.resource) ||
-               Ash.DataLayer.data_layer_can?(context.resource, {:filter_expr, function}) do
+          if can_filter_expr?(context, function) do
             {:ok, BooleanExpression.optimized_new(:and, expression, function)}
           else
-            {:error, "data layer does not support the function #{inspect(function)}"}
+            {:error,
+             "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the function #{inspect(function)}"}
           end
         end
     end
@@ -2777,7 +2790,9 @@ defmodule Ash.Filter do
 
         with %{valid?: true} = aggregate_query <- Ash.Query.for_read(related, read_action),
              %{valid?: true} = aggregate_query <-
-               Ash.Query.Aggregate.build_query(aggregate_query,
+               Ash.Query.Aggregate.build_query(
+                 aggregate_query,
+                 context.resource,
                  filter: aggregate.filter,
                  sort: aggregate.sort
                ),
@@ -2786,6 +2801,7 @@ defmodule Ash.Filter do
                  context.resource,
                  aggregate.name,
                  aggregate.kind,
+                 agg_name: aggregate.name,
                  path: aggregate.relationship_path,
                  query: aggregate_query,
                  field: aggregate.field,
@@ -2820,8 +2836,6 @@ defmodule Ash.Filter do
         end
 
       resource_calculation = calculation(context, field) ->
-        {module, opts} = resource_calculation.calculation
-
         {input, nested_statement} =
           case nested_statement do
             %{"input" => input} ->
@@ -2841,18 +2855,10 @@ defmodule Ash.Filter do
                  !context[:input?]
                ),
              {:ok, calculation} <-
-               Calculation.new(
-                 resource_calculation.name,
-                 module,
-                 opts,
-                 resource_calculation.type,
-                 resource_calculation.constraints,
-                 arguments: args,
-                 async?: resource_calculation.async?,
-                 filterable?: resource_calculation.filterable?,
-                 sortable?: resource_calculation.sortable?,
-                 sensitive?: resource_calculation.sensitive?,
-                 load: resource_calculation.load
+               Calculation.from_resource_calculation(
+                 context.resource,
+                 resource_calculation,
+                 args: args
                ) do
           calculation = %{calculation | load: calculation.name}
 
@@ -2958,6 +2964,26 @@ defmodule Ash.Filter do
                "a single value must be castable to the primary key of the resource: #{inspect(context.resource)}"
            )}
       end
+    end
+  end
+
+  defp can_filter_expr?(context, expr) do
+    cond do
+      context[:eval?] || is_nil(context.resource) ->
+        true
+
+      data_layer = context[:data_layer] ->
+        data_layer.can?(context.resource, {:filter_expr, expr})
+
+      true ->
+        Ash.DataLayer.data_layer_can?(context.resource, {:filter_expr, expr})
+    end
+    |> case do
+      false ->
+        false
+
+      true ->
+        true
     end
   end
 
@@ -3087,11 +3113,11 @@ defmodule Ash.Filter do
       if is_boolean(operator) do
         {:ok, operator}
       else
-        if is_nil(context.resource) ||
-             Ash.DataLayer.data_layer_can?(context.resource, {:filter_expr, operator}) do
+        if can_filter_expr?(context, operator) do
           {:ok, operator}
         else
-          {:error, "data layer does not support the operator #{inspect(operator)}"}
+          {:error,
+           "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the operator #{inspect(operator)}"}
         end
       end
     else
@@ -3140,7 +3166,7 @@ defmodule Ash.Filter do
       opts = Keyword.put(opts, :path, path)
 
       with {:ok, agg} <-
-             Ash.Query.Aggregate.new(
+             Aggregate.new(
                resource,
                agg_name(kind, opts),
                kind,
@@ -3178,26 +3204,14 @@ defmodule Ash.Filter do
 
     cond do
       resource_calculation ->
-        {module, opts} = resource_calculation.calculation
-
         with {:ok, args} <-
                Ash.Query.validate_calculation_arguments(
                  resource_calculation,
                  Map.new(Enum.at(args, 0) || [])
                ),
              {:ok, calculation} <-
-               Calculation.new(
-                 resource_calculation.name,
-                 module,
-                 opts,
-                 resource_calculation.type,
-                 resource_calculation.constraints,
-                 arguments: args,
-                 async?: resource_calculation.async?,
-                 filterable?: resource_calculation.filterable?,
-                 sortable?: resource_calculation.sortable?,
-                 sensitive?: resource_calculation.sensitive?,
-                 load: resource_calculation.load
+               Calculation.from_resource_calculation(context.resource, resource_calculation,
+                 args: args
                ) do
           {:ok,
            %Ref{
@@ -3273,20 +3287,20 @@ defmodule Ash.Filter do
           if Ash.Expr.expr?(function) && !match?(%{__predicate__?: _}, function) do
             hydrate_refs(function, context)
           else
-            if is_nil(context.resource) ||
-                 Ash.DataLayer.data_layer_can?(context.resource, {:filter_expr, function}) do
+            if can_filter_expr?(context, function) do
               {:ok, function}
             else
               function.arguments
               |> List.wrap()
               |> Enum.reduce_while({:ok, []}, fn arg, {:ok, acc} ->
-                case Ash.Expr.eval(arg) do
+                case Ash.Expr.eval(arg, unknown_on_unknown_refs?: true) do
                   {:ok, value} ->
                     {:cont, {:ok, [value | acc]}}
 
                   _ ->
                     {:halt,
-                     {:error, "data layer does not support the function #{inspect(function)}"}}
+                     {:error,
+                      "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the function #{inspect(function)}"}}
                 end
               end)
               |> case do
@@ -3298,7 +3312,8 @@ defmodule Ash.Filter do
                       {:ok, result}
 
                     _ ->
-                      {:error, "data layer does not support the function #{inspect(function)}"}
+                      {:error,
+                       "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the function #{inspect(function)}"}
                   end
 
                 {:error, error} ->
@@ -3472,28 +3487,12 @@ defmodule Ash.Filter do
             {:ok, %{ref | attribute: attribute, resource: related}}
 
           resource_calculation = calculation(context, attribute) ->
-            {module, opts} = resource_calculation.calculation
+            case Calculation.from_resource_calculation(context.resource, resource_calculation) do
+              {:ok, calculation} ->
+                calculation = %{calculation | load: calculation.name}
 
-            with {:ok, args} <-
-                   Ash.Query.validate_calculation_arguments(resource_calculation, %{}),
-                 {:ok, calculation} <-
-                   Calculation.new(
-                     resource_calculation.name,
-                     module,
-                     opts,
-                     resource_calculation.type,
-                     resource_calculation.constraints,
-                     arguments: args,
-                     async?: resource_calculation.async?,
-                     filterable?: resource_calculation.filterable?,
-                     sortable?: resource_calculation.sortable?,
-                     sensitive?: resource_calculation.sensitive?,
-                     load: resource_calculation.load
-                   ) do
-              calculation = %{calculation | load: calculation.name}
+                {:ok, %{ref | attribute: calculation, resource: related}}
 
-              {:ok, %{ref | attribute: calculation, resource: related}}
-            else
               {:error, error} ->
                 {:error, error}
             end
@@ -3504,7 +3503,9 @@ defmodule Ash.Filter do
             with %{valid?: true} = aggregate_query <-
                    Ash.Query.new(agg_related),
                  %{valid?: true} = aggregate_query <-
-                   Ash.Query.Aggregate.build_query(aggregate_query,
+                   Ash.Query.Aggregate.build_query(
+                     aggregate_query,
+                     context.resource,
                      filter: aggregate.filter,
                      sort: aggregate.sort
                    ),
@@ -3513,6 +3514,7 @@ defmodule Ash.Filter do
                      related,
                      aggregate.name,
                      aggregate.kind,
+                     agg_name: aggregate.name,
                      path: aggregate.relationship_path,
                      query: aggregate_query,
                      field: aggregate.field,
@@ -3884,6 +3886,37 @@ defmodule Ash.Filter do
     end
   end
 
+  defp parse_and_join(statement, op, context)
+       when is_map(statement) and not is_struct(statement) do
+    statement
+    |> Enum.reduce_while({:ok, []}, fn
+      {key, value}, {:ok, acc} when is_integer(key) ->
+        {:cont, {:ok, [{key, value} | acc]}}
+
+      {key, value}, {:ok, acc} when is_binary(key) ->
+        case Integer.parse(key) do
+          {int, ""} ->
+            {:cont, {:ok, [{int, value} | acc]}}
+
+          _ ->
+            {:halt, :error}
+        end
+
+      _, _ ->
+        {:halt, :error}
+    end)
+    |> case do
+      {:ok, value} ->
+        value
+        |> Enum.sort_by(&elem(&1, 0))
+        |> Enum.map(&elem(&1, 1))
+
+      :error ->
+        [statement]
+    end
+    |> parse_and_join(op, context)
+  end
+
   defp parse_predicates(value, field, context)
        when not is_list(value) and not is_map(value) do
     parse_predicates([eq: value], field, context)
@@ -3972,15 +4005,12 @@ defmodule Ash.Filter do
                        refs <- list_refs(args),
                        :ok <- validate_refs(refs, context.root_resource, {key, [left, value]}),
                        {:ok, function} <- Function.new(function_module, args) do
-                    if is_nil(context.resource) ||
-                         Ash.DataLayer.data_layer_can?(
-                           context.resource,
-                           {:filter_expr, function}
-                         ) do
+                    if can_filter_expr?(context, function) do
                       {:cont, {:ok, BooleanExpression.optimized_new(:and, expression, function)}}
                     else
                       {:halt,
-                       {:error, "data layer does not support the function #{inspect(function)}"}}
+                       {:error,
+                        "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the function #{inspect(function)}"}}
                     end
                   end
               end
@@ -4016,15 +4046,12 @@ defmodule Ash.Filter do
                 if is_boolean(operator) do
                   {:cont, {:ok, operator}}
                 else
-                  if is_nil(context.resource) ||
-                       Ash.DataLayer.data_layer_can?(
-                         context.resource,
-                         {:filter_expr, operator}
-                       ) do
+                  if can_filter_expr?(context, operator) do
                     {:cont, {:ok, BooleanExpression.optimized_new(:and, expression, operator)}}
                   else
                     {:halt,
-                     {:error, "data layer does not support the operator #{inspect(operator)}"}}
+                     {:error,
+                      "data layer `#{inspect(context[:data_layer] || Ash.DataLayer.data_layer(context.resource))}` does not support the operator #{inspect(operator)}"}}
                   end
                 end
               else

@@ -209,7 +209,12 @@ defmodule Ash.DataLayer do
               list(atom),
               Ash.Resource.Identity.t() | nil
             ) ::
-              {:ok, Ash.Resource.record()} | {:error, term} | {:error, :no_rollback, term}
+              {:ok,
+               Ash.Resource.record()
+               | {:upsert_skipped, Ash.Query.t(),
+                  (-> {:ok, Ash.Resource.record()} | {:error, term} | {:error, :no_rollback, term})}}
+              | {:error, term}
+              | {:error, :no_rollback, term}
   @callback update(Ash.Resource.t(), Ash.Changeset.t()) ::
               {:ok, Ash.Resource.record()} | {:error, term} | {:error, :no_rollback, term}
 
@@ -276,6 +281,8 @@ defmodule Ash.DataLayer do
   @callback rollback(Ash.Resource.t(), term) :: no_return
   @callback calculate(Ash.Resource.t(), list(Ash.Expr.t()), context :: map) ::
               {:ok, term} | {:error, term}
+  @callback prefer_transaction?(Ash.Resource.t()) :: boolean
+  @callback prefer_transaction_for_atomic_updates?(Ash.Resource.t()) :: boolean
   @callback can?(Ash.Resource.t() | Spark.Dsl.t(), feature()) :: boolean
   @callback set_context(Ash.Resource.t(), data_layer_query(), map) ::
               {:ok, data_layer_query()} | {:error, term}
@@ -292,6 +299,8 @@ defmodule Ash.DataLayer do
                       create: 2,
                       update: 2,
                       set_context: 3,
+                      prefer_transaction?: 1,
+                      prefer_transaction_for_atomic_updates?: 1,
                       calculate: 3,
                       destroy: 2,
                       filter: 3,
@@ -350,6 +359,32 @@ defmodule Ash.DataLayer do
           {:ok, list(term)} | {:error, Ash.Error.t()}
   def calculate(resource, exprs, context) do
     data_layer(resource).calculate(resource, exprs, context)
+  end
+
+  @spec prefer_transaction?(Ash.Resource.t()) :: boolean
+  def prefer_transaction?(resource) do
+    data_layer = data_layer(resource)
+
+    if function_exported?(data_layer, :prefer_transaction?, 1) do
+      data_layer.prefer_transaction?(resource)
+    else
+      # default to false in 4.0
+      # also change in postgres data layer to default to false
+      true
+    end
+  end
+
+  @spec prefer_transaction_for_atomic_updates?(Ash.Resource.t()) :: boolean
+  def prefer_transaction_for_atomic_updates?(resource) do
+    data_layer = data_layer(resource)
+
+    if function_exported?(data_layer, :prefer_transaction_for_atomic_updates?, 1) do
+      data_layer.prefer_transaction_for_atomic_updates?(resource)
+    else
+      # default to false in 4.0
+      # also change in postgres data layer to default to false
+      true
+    end
   end
 
   @doc "Wraps the execution of the function in a transaction with the resource's data_layer"
@@ -534,7 +569,13 @@ defmodule Ash.DataLayer do
           list(atom),
           identity :: Ash.Resource.Identity.t() | nil
         ) ::
-          {:ok, Ash.Resource.record()} | {:error, term}
+          {:ok,
+           Ash.Resource.record()
+           | {:upsert_skipped, Ash.Query.t(),
+              (-> {:ok, Ash.Resource.record()} | {:error, term} | {:error, :no_rollback, term})}}
+          | {:error, term}
+          | {:error, :no_rollback, term}
+
   def upsert(resource, changeset, keys, identity \\ nil) do
     changeset = %{changeset | tenant: changeset.to_tenant}
     data_layer = Ash.DataLayer.data_layer(resource)
@@ -638,10 +679,11 @@ defmodule Ash.DataLayer do
 
   @spec select(data_layer_query(), select :: list(atom), Ash.Resource.t()) ::
           {:ok, data_layer_query()} | {:error, term}
-  def select(query, nil, _resource), do: {:ok, query}
-
   def select(query, select, resource) do
     if can?(:select, resource) do
+      select =
+        select || Enum.to_list(Ash.Resource.Info.selected_by_default_attribute_names(resource))
+
       data_layer = Ash.DataLayer.data_layer(resource)
       data_layer.select(query, select, resource)
     else

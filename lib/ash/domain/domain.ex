@@ -22,6 +22,12 @@ defmodule Ash.Domain do
 
   use Spark.Dsl,
     default_extensions: [extensions: [Ash.Domain.Dsl]],
+    many_extension_kinds: [
+      :authorizers
+    ],
+    extension_kind_types: [
+      authorizers: {:wrap_list, {:behaviour, Ash.Authorizer}}
+    ],
     opt_schema: [
       validate_config_inclusion?: [
         type: :boolean,
@@ -90,7 +96,7 @@ defmodule Ash.Domain do
   @impl Spark.Dsl
   def handle_before_compile(_) do
     quote do
-      if Keyword.get(@opts, :backards_compatible_interface?, true) do
+      if Keyword.get(@opts, :backards_compatible_interface?, false) do
         use Ash.Domain.Interface
       end
 

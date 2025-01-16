@@ -6,6 +6,24 @@ defmodule Ash.Test.Actions.LoadTest do
 
   alias Ash.Test.Domain, as: Domain
 
+  defmodule ExampleWithNoPrimaryRead do
+    use Ash.Resource,
+      domain: Domain,
+      data_layer: Ash.DataLayer.Ets
+
+    actions do
+      defaults [:create]
+    end
+
+    attributes do
+      uuid_primary_key :id
+    end
+
+    calculations do
+      calculate :id_calc, :uuid, expr(id)
+    end
+  end
+
   defmodule Campaign do
     @moduledoc false
     use Ash.Resource,
@@ -146,6 +164,16 @@ defmodule Ash.Test.Actions.LoadTest do
       ]
   end
 
+  defmodule PostsWithACalc do
+    use Ash.Resource.Calculation
+
+    def load(_, _, _), do: [posts: :category_length]
+
+    def calculate(records, _, _) do
+      Enum.map(records, & &1.posts)
+    end
+  end
+
   defmodule Author do
     @moduledoc false
     use Ash.Resource,
@@ -177,6 +205,10 @@ defmodule Ash.Test.Actions.LoadTest do
       end
 
       calculate :campaign_upcase, :string, Ash.Test.Actions.LoadTest.UpcaseName
+
+      calculate :posts_calc, :struct, PostsWithACalc do
+        constraints instance_of: Ash.Test.Actions.LoadTest.Post
+      end
     end
 
     aggregates do
@@ -308,6 +340,10 @@ defmodule Ash.Test.Actions.LoadTest do
         action(:read)
         get_by([:id])
       end
+    end
+
+    calculations do
+      calculate :category_length, :string, expr(string_length(category))
     end
 
     relationships do
@@ -601,7 +637,7 @@ defmodule Ash.Test.Actions.LoadTest do
 
       [author] =
         Author
-        |> Ash.Query.load(posts: [:author])
+        |> Ash.Query.for_read(:read, %{}, load: [posts: [:author]])
         |> Ash.Query.filter(posts.id == ^post1.id)
         |> Ash.read!(authorize?: true)
 
@@ -710,6 +746,29 @@ defmodule Ash.Test.Actions.LoadTest do
         |> Ash.read!(authorize?: true)
 
       Ash.load!(author, [:posts, :latest_post], lazy?: true)
+    end
+
+    @tag :regression
+    test "you can lazy load through empty relationships without errors" do
+      author =
+        Author
+        |> Ash.Changeset.for_create(:create, %{name: "zerg"})
+        |> Ash.create!()
+
+      Post
+      |> Ash.Changeset.for_create(:create, %{title: "post1"})
+      |> Ash.Changeset.manage_relationship(:author, author, type: :append_and_remove)
+      |> Ash.create!()
+
+      Post
+      |> Ash.Changeset.for_create(:create, %{title: "post2"})
+      |> Ash.Changeset.manage_relationship(:author, author, type: :append_and_remove)
+      |> Ash.create!()
+
+      Author
+      |> Ash.Query.load([:posts])
+      |> Ash.read!(authorize?: true)
+      |> Ash.load!([posts: :author], lazy?: true)
     end
 
     test "loading something already loaded still loads it unless lazy?: true" do
@@ -1885,5 +1944,15 @@ defmodule Ash.Test.Actions.LoadTest do
       assert post.title == loaded_post.title
       assert post.contents == loaded_post.contents
     end
+  end
+
+  test "you can load data on create with no default read action" do
+    record =
+      ExampleWithNoPrimaryRead
+      |> Ash.Changeset.for_create(:create, %{})
+      |> Ash.Changeset.load(:id_calc)
+      |> Ash.create!()
+
+    assert record.id == record.id_calc
   end
 end
